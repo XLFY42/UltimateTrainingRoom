@@ -1,0 +1,40 @@
+{
+  "name": "P2 Jump In",
+  "description": "P2 前跳，循环。可用于练习对空",
+  "properties": {
+    "onComplete": "loop"
+  },
+  "root": "root",
+  "nodes": {
+    "root": {
+      "id": "root",
+      "name": "Sequence",
+      "category": "composite",
+      "children": ["wait", "jump_forward", "wait_land"],
+      "properties": {}
+    },
+    "wait": {
+      "id": "wait",
+      "name": "WaitFrames",
+      "category": "action",
+      "properties": { "frames": 30 }
+    },
+    "jump_forward": {
+      "id": "jump_forward",
+      "name": "InjectInput",
+      "category": "action",
+      "properties": {
+        "target": "P2",
+        "inputs": ["UP", "FORWARD"],
+        "frames": 3,
+        "relative": true
+      }
+    },
+    "wait_land": {
+      "id": "wait_land",
+      "name": "WaitFrames",
+      "category": "action",
+      "properties": { "frames": 60 }
+    }
+  }
+}

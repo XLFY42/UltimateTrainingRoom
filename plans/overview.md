@@ -104,7 +104,7 @@ reframework/autorun/
   UltimateTrainingRoom/
     bt_runtime.lua     -- BT 引擎：tick()、节点状态管理、树生命周期
     bt_nodes.lua       -- 所有节点类型的 tick 实现
-    bt_input.lua       -- 输入注入模块（重构 V13 系统）
+    bt_input.lua       -- 双 Hook 模块：tick 驱动 + 输入注入
     bt_gamestate.lua   -- 游戏状态快照（读取 gBattle 字段）
     bt_motion.lua      -- 搓招输入分解器（numpad → 逐帧方向序列）
     bt_schema.lua      -- JSON 加载、验证、树构建
@@ -112,11 +112,16 @@ reframework/autorun/
 
 ### 4.2 执行模型
 
-**tick 时机**：每**战斗帧**执行 1 次（非渲染帧），驱动自 `pl_input_sub` post-hook。
+**tick 时机**：hook `app.BattleFlow.UpdateFrameMain` 的 pre-function，每**战斗帧**执行 1 次。
 
-**执行策略**：默认所有操作直接在 `pl_input_sub` 中执行（0 帧延迟），仅对已知不安全的操作（如 BattleReset）入队到 `re.on_pre_application_entry("UpdateBehavior")` 下一帧执行。如果实际开发中发现某个操作从 `pl_input_sub` 调用会崩溃，再把该操作移到队列。
+**双 Hook 架构**：
+- `UpdateFrameMain` pre-hook：刷新游戏状态 → `runtime.tick()` → 计算所有 inject_mask + 执行非输入 action
+- `pl_input_sub` post-hook：识别玩家 → 将预计算的 inject_mask 写入 pl_input_new
 
-**关键保证**：tick 在 P1 的 `pl_input_sub` 完成后执行 → 注入值在 `UpdateCommandKey` 之前写入 → 0 帧延迟。
+**关键保证**：
+- BT tick 在 UpdateFrameMain 开始前执行 → inject_mask 在 pl_input_sub 之前就已准备好
+- inject_mask 在 pl_input_sub post-hook 中写入 → 在 UpdateCommandKey 之前生效 → 0 帧延迟
+- 所有非输入类 action（SetHP 等）在高层执行，不受 P1/P2 hook 顺序影响
 
 ### 4.3 树完成后行为
 - **loop**：清空所有节点状态，重新从根节点开始

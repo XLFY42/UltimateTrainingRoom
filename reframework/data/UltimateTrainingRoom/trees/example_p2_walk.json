@@ -1,0 +1,34 @@
+{
+  "name": "P2 Walk Forward",
+  "description": "P2 等待 0.5 秒，然后前走 1 秒，循环",
+  "properties": {
+    "onComplete": "loop"
+  },
+  "root": "root",
+  "nodes": {
+    "root": {
+      "id": "root",
+      "name": "Sequence",
+      "category": "composite",
+      "children": ["wait", "walk"],
+      "properties": {}
+    },
+    "wait": {
+      "id": "wait",
+      "name": "WaitFrames",
+      "category": "action",
+      "properties": { "frames": 30 }
+    },
+    "walk": {
+      "id": "walk",
+      "name": "InjectInput",
+      "category": "action",
+      "properties": {
+        "target": "P2",
+        "inputs": ["FORWARD"],
+        "frames": 60,
+        "relative": true
+      }
+    }
+  }
+}
