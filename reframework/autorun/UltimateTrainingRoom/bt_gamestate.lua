@@ -53,6 +53,8 @@ function M.refresh(ctx)
         hitstop     = p1.hit_stop,
         invuln      = p1.muteki_time,
         facing_left = p1:call("get_IsLeft"),
+        cmd_dir     = p1.cmd_dir,          -- 指令方向（输入解释用）
+        cmd_side    = p1.cmd_side,         -- 角色相对位置侧
         pos_x       = p1.pos.x.v / 6553600.0,
         pos_y       = p1.pos.y.v / 6553600.0,
         input       = p1.pl_input_new,
@@ -72,6 +74,8 @@ function M.refresh(ctx)
         hitstop     = p2.hit_stop,
         invuln      = p2.muteki_time,
         facing_left = p2:call("get_IsLeft"),
+        cmd_dir     = p2.cmd_dir,
+        cmd_side    = p2.cmd_side,
         pos_x       = p2.pos.x.v / 6553600.0,
         pos_y       = p2.pos.y.v / 6553600.0,
         input       = p2.pl_input_new,

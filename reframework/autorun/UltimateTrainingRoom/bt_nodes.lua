@@ -28,31 +28,32 @@ local INPUT_MASKS = {
 }
 
 -- 将输入名列表转为位掩码
--- relative=true 时 FORWARD/BACK 根据角色朝向转换
+-- relative=true 时 FORWARD/BACK 根据 cmd_dir 转换
 local function resolve_input_mask(inputs, target, relative, ctx)
     local mask = 0
-    local facing_left = false
+    local cmd_dir = false
 
     if relative and ctx.game_state then
         if target == "P1" and ctx.game_state.p1 then
-            facing_left = ctx.game_state.p1.facing_left
+            cmd_dir = ctx.game_state.p1.cmd_dir
         elseif target == "P2" and ctx.game_state.p2 then
-            facing_left = ctx.game_state.p2.facing_left
+            cmd_dir = ctx.game_state.p2.cmd_dir
         end
     end
 
     for _, input in ipairs(inputs) do
         if input == "FORWARD" then
-            if facing_left then
-                mask = mask | 4   -- LEFT
-            else
+            -- cmd_dir=true → 角色在左边 → 面朝右 → FORWARD=RIGHT
+            if cmd_dir then
                 mask = mask | 8   -- RIGHT
+            else
+                mask = mask | 4   -- LEFT
             end
         elseif input == "BACK" then
-            if facing_left then
-                mask = mask | 8   -- RIGHT
-            else
+            if cmd_dir then
                 mask = mask | 4   -- LEFT
+            else
+                mask = mask | 8   -- RIGHT
             end
         elseif input == "NEUTRAL" then
             -- 不添加任何位
