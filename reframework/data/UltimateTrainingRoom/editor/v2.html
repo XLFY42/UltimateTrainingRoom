@@ -1,0 +1,4538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行为树编辑器 v2</title>
+<style>
+/* ============================================================
+   CSS Variables — 色彩体系 & 全局 token
+   ============================================================ */
+:root {
+  /* 画布 */
+  --canvas-bg: #1a1a2e;
+  --grid-fine: #222240;
+  --grid-coarse: #2a2a45;
+
+  /* 面板 */
+  --panel-bg: #12121e;
+  --panel-border: #2a2a45;
+
+  /* 文字 */
+  --text-primary: #d4d4e8;
+  --text-secondary: #6c6c8a;
+  --text-disabled: #44445a;
+
+  /* 交互 */
+  --accent: #5a9bf6;
+  --danger: #e05555;
+
+  /* 类别色 */
+  --cat-composite: #3a7ebf;
+  --cat-decorator: #4a9a6a;
+  --cat-action: #c07838;
+  --cat-condition: #b89a30;
+
+  /* 控件 */
+  --btn-bg: #2a2a45;
+  --btn-hover: #3a3a55;
+  --input-bg: #1e1e34;
+  --input-border: #2a2a45;
+
+  /* 圆角 */
+  --radius-node: 6px;
+  --radius-btn: 4px;
+  --radius-input: 3px;
+  --radius-popup: 8px;
+
+  /* 字体 */
+  --font: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ============================================================
+   Reset & Base
+   ============================================================ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--canvas-bg);
+  user-select: none;
+}
+
+/* ============================================================
+   Layout — 三栏 flex
+   ============================================================ */
+#app {
+  display: flex;
+  width: 100%; height: 100%;
+}
+
+/* ---------- 左面板 ---------- */
+#left-panel {
+  width: 200px;
+  min-width: 0;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+#left-panel.collapsed { width: 0 !important; border-right: none; overflow: visible; }
+#left-panel.collapsed > *:not(.panel-collapse-btn-collapsed) { display: none; }
+
+/* ---------- 分隔条 ---------- */
+.divider {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.divider.active { background: #3a5a8f; }
+
+/* ---------- 中央画布区 ---------- */
+#canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--canvas-bg);
+}
+
+#grid-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+}
+
+#node-container {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  z-index: 1;
+  transform-origin: 0 0;
+}
+
+#connection-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+#selection-rect {
+  position: absolute;
+  display: none;
+  border: 1px solid rgba(90,155,246,0.9);
+  background: rgba(90,155,246,0.16);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ---------- 右面板 ---------- */
+#right-panel {
+  width: 260px;
+  min-width: 0;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+#right-panel.collapsed { width: 0 !important; border-left: none; overflow: visible; }
+#right-panel.collapsed > *:not(.panel-collapse-btn-collapsed) { display: none; }
+
+/* ============================================================
+   面板公共样式
+   ============================================================ */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.panel-collapse-btn {
+  background: none;
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  width: 24px; height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-btn);
+  flex-shrink: 0;
+}
+.panel-collapse-btn:hover { background: var(--btn-hover); color: var(--text-primary); }
+
+/* 折叠后的展开按钮 — 贴在分隔条旁 */
+.panel-collapse-btn-collapsed {
+  display: none;
+  position: absolute;
+  top: 8px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  width: 24px; height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-btn);
+  z-index: 20;
+}
+.panel-collapse-btn-collapsed:hover { background: var(--btn-hover); color: var(--text-primary); }
+
+#left-panel.collapsed .panel-collapse-btn-collapsed {
+  display: flex;
+  right: -28px;
+}
+#right-panel.collapsed .panel-collapse-btn-collapsed {
+  display: flex;
+  left: -28px;
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.panel-body::-webkit-scrollbar { width: 5px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+.panel-body::-webkit-scrollbar-thumb:hover { background: var(--btn-hover); }
+
+/* ============================================================
+   工具栏 — 画布左上角浮动
+   ============================================================ */
+#toolbar {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  gap: 2px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-btn);
+  padding: 3px;
+}
+
+.toolbar-btn {
+  background: var(--btn-bg);
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius-btn);
+  white-space: nowrap;
+}
+.toolbar-btn:hover { background: var(--btn-hover); }
+.toolbar-btn:active { background: var(--accent); color: #fff; }
+.toolbar-btn.disabled {
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+/* ============================================================
+   右面板内容占位
+   ============================================================ */
+.placeholder-text {
+  color: var(--text-disabled);
+  text-align: center;
+  margin-top: 40px;
+  font-size: 12px;
+}
+
+/* ============================================================
+   搜索框
+   ============================================================ */
+.search-box {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 12px;
+  outline: none;
+  margin-bottom: 8px;
+}
+.search-box::placeholder { color: var(--text-disabled); }
+.search-box:focus { border-color: var(--accent); }
+
+.palette-group {
+  margin-bottom: 10px;
+}
+
+.palette-group-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.palette-item {
+  display: grid;
+  grid-template-columns: 3px 1fr;
+  align-items: center;
+  min-height: 24px;
+  margin-bottom: 4px;
+  background: rgba(22, 22, 36, 0.72);
+  border: 1px solid #2a2a45;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.palette-item:hover {
+  border-color: #4a4a68;
+  background: rgba(28, 28, 44, 0.88);
+}
+
+.palette-item-strip {
+  align-self: stretch;
+}
+
+.palette-item-name {
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.palette-drag-preview {
+  position: fixed;
+  width: 160px;
+  height: 28px;
+  border-radius: 6px;
+  box-shadow: 2px 6px 14px rgba(0,0,0,0.45);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0.82;
+}
+
+.palette-drag-preview-title {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.context-menu {
+  position: fixed;
+  min-width: 180px;
+  background: #1c1c2f;
+  border: 1px solid #343453;
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  padding: 4px;
+  z-index: 300;
+  display: none;
+}
+
+.context-menu.open {
+  display: block;
+}
+
+.context-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover {
+  background: rgba(90,155,246,0.16);
+}
+
+.context-menu-item.disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.context-menu-item.disabled:hover {
+  background: transparent;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: #31314b;
+}
+
+.context-menu-arrow {
+  color: var(--text-secondary);
+}
+
+.context-submenu {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  min-width: 180px;
+  background: #1c1c2f;
+  border: 1px solid #343453;
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  padding: 4px;
+  display: none;
+}
+
+.context-menu-item:hover > .context-submenu {
+  display: block;
+}
+
+/* ============================================================
+   节点 — HTML div 渲染
+   ============================================================ */
+.bt-node {
+  position: absolute;
+  width: 160px;
+  border-radius: var(--radius-node);
+  border: 1px solid var(--panel-border);
+  box-shadow: 2px 3px 8px rgba(0,0,0,0.4);
+  cursor: default;
+  font-family: var(--font);
+  transition: box-shadow 0.15s;
+}
+.bt-node:hover {
+  border-color: #505068;
+  box-shadow: 3px 5px 16px rgba(0,0,0,0.6), 0 0 4px rgba(90,155,246,0.15);
+}
+.bt-node.selected {
+  border-color: color-mix(in srgb, var(--node-cat-color, var(--accent)) 72%, #ffffff 28%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-cat-color, var(--accent)) 55%, transparent), 0 0 8px 2px var(--node-cat-color, var(--accent));
+}
+.bt-node.multi-selected {
+  border-color: color-mix(in srgb, var(--node-cat-color, var(--accent)) 55%, #ffffff 12%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-cat-color, var(--accent)) 35%, transparent), 0 0 5px 1px rgba(90,155,246,0.22);
+}
+.bt-node.connection-valid-node {
+  border-color: color-mix(in srgb, var(--node-cat-color, var(--accent)) 75%, #ffffff 25%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-cat-color, var(--accent)) 45%, transparent), 0 0 10px 2px color-mix(in srgb, var(--node-cat-color, var(--accent)) 65%, transparent);
+}
+
+.bt-node-validation {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 14px solid #d9aa33;
+  filter: drop-shadow(0 0 4px rgba(0,0,0,0.45));
+  display: none;
+}
+
+.bt-node-validation.error {
+  border-bottom-color: #d05757;
+}
+
+.bt-node.has-validation .bt-node-validation {
+  display: block;
+}
+
+.validation-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 300px;
+  max-height: 320px;
+  display: none;
+  flex-direction: column;
+  background: rgba(28, 28, 47, 0.98);
+  border: 1px solid #343453;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.36);
+  z-index: 260;
+  overflow: hidden;
+}
+
+.validation-panel.open {
+  display: flex;
+}
+
+.validation-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.validation-panel-list {
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.validation-item {
+  padding: 6px 8px;
+  border: 1px solid #31314b;
+  border-radius: 6px;
+  background: rgba(22, 22, 36, 0.72);
+  cursor: pointer;
+}
+
+.validation-item:hover {
+  border-color: #4a4a68;
+}
+
+.validation-item-title {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.validation-item-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.validation-item.error {
+  border-color: rgba(208,87,87,0.35);
+}
+
+.validation-item.warning {
+  border-color: rgba(217,170,51,0.35);
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 18, 0.62);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 280;
+}
+
+.help-overlay.open {
+  display: flex;
+}
+
+.help-dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: rgba(28, 28, 47, 0.98);
+  border: 1px solid #343453;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.36);
+  overflow: hidden;
+}
+
+.help-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.help-dialog-body {
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 12px;
+  font-size: 11px;
+}
+
+.help-key {
+  color: var(--text-primary);
+}
+
+.help-desc {
+  color: var(--text-secondary);
+}
+.bt-node.disabled {
+  filter: grayscale(0.75);
+}
+
+/* 标题栏 */
+.bt-node-title {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: var(--radius-node) var(--radius-node) 0 0;
+  background: var(--node-cat-color, var(--accent));
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+  position: relative;
+  cursor: default;
+}
+.bt-node.selected .bt-node-title {
+  filter: brightness(1.15);
+}
+
+/* 标题图标（左侧绝对定位）— 用于激活/关闭节点（后续实现） */
+.bt-node-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.4);
+  cursor: pointer;
+}
+.bt-node-icon:hover { background: rgba(255,255,255,0.7); }
+.bt-node.disabled .bt-node-icon {
+  background: rgba(0,0,0,0.28);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+}
+
+/* Root 节点：隐藏小方块，显示 ★ */
+.bt-node.is-root .bt-node-icon { display: none; }
+
+/* Root 标记（左侧绝对定位，与小方块同位置） */
+.bt-node-root-mark {
+  display: none;
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #ffd700;
+}
+.bt-node.is-root .bt-node-root-mark { display: block; }
+
+/* 标题文字（居中） */
+.bt-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* 三角展开图标（右侧绝对定位） */
+.bt-node-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+  cursor: pointer;
+  width: 16px;
+  text-align: center;
+}
+.bt-node-toggle:hover { color: #fff; }
+.bt-node-toggle.hidden { display: none; }
+
+/* 摘要区 */
+.bt-node-summary {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #a0a0be;
+  background: rgba(18, 18, 30, 0.7);
+  border-radius: 0 0 var(--radius-node) var(--radius-node);
+  min-height: 18px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 展开区（属性编辑） */
+.bt-node-props {
+  padding: 4px 8px 6px;
+  background: rgba(18, 18, 30, 0.7);
+  border-radius: 0 0 var(--radius-node) var(--radius-node);
+  display: none;
+}
+.bt-node.expanded .bt-node-props { display: block; }
+.bt-node.expanded .bt-node-summary { display: none; }
+
+.bt-node-prop-row {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  gap: 6px;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.bt-node-prop-label {
+  color: var(--text-secondary);
+  width: 52px;
+  flex-shrink: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bt-node-prop-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 2px 6px;
+  background: rgba(24, 24, 38, 0.95);
+  border: 1px solid #30304a;
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  outline: none;
+}
+.bt-node-prop-input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.bt-node-prop-input[type="number"]::-webkit-outer-spin-button,
+.bt-node-prop-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.bt-node-prop-input:hover { border-color: #40405f; }
+.bt-node-prop-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(90,155,246,0.18);
+}
+
+.bt-node-prop-select {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.bt-node-prop-select-btn {
+  width: 100%;
+  height: 20px;
+  padding: 2px 24px 2px 6px;
+  background: rgba(24, 24, 38, 0.95);
+  border: 1px solid #30304a;
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+
+.bt-node-prop-select-btn::before,
+.bt-node-prop-select-btn::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 5px;
+  height: 1px;
+  background: #8f96b8;
+  transform-origin: center;
+}
+
+.bt-node-prop-select-btn::before {
+  transform: translateY(-1px) rotate(45deg);
+  right: 13px;
+}
+
+.bt-node-prop-select-btn::after {
+  transform: translateY(-1px) rotate(-45deg);
+  right: 10px;
+}
+
+.bt-node-prop-select:hover .bt-node-prop-select-btn {
+  border-color: #40405f;
+}
+
+.bt-node-prop-select.open .bt-node-prop-select-btn,
+.bt-node-prop-select-btn:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(90,155,246,0.18);
+}
+
+.bt-node-prop-select-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #202033;
+  border: 1px solid #3b4663;
+  border-radius: 4px;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.35);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.bt-node-prop-select.open .bt-node-prop-select-menu {
+  display: block;
+}
+
+.bt-node-prop-select-option {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bt-node-prop-select-option.active {
+  background: rgba(90,155,246,0.10);
+}
+
+.bt-node-prop-select-option:hover,
+.bt-node-prop-select-option:focus-visible {
+  background: rgba(90,155,246,0.20);
+}
+.bt-node-prop-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* 端口 — 外层为扩大的点击/悬停区域，内层伪元素为可见圆点 */
+.bt-port {
+  position: absolute;
+  left: 50%;
+  width: 20px; height: 20px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: transparent;
+  z-index: 2;
+  cursor: crosshair;
+}
+.bt-port::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 8px; height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: #3a3a55;
+  border: 1.5px solid #555;
+  transition: transform 0.1s, background 0.1s, box-shadow 0.1s;
+}
+.bt-port:hover::after {
+  transform: scale(1.3);
+  background: var(--node-cat-color, var(--accent));
+  box-shadow: 0 0 6px 2px var(--node-cat-color, var(--accent));
+}
+.bt-port-in { top: -10px; }
+.bt-port-out { bottom: -10px; }
+.bt-port.connection-valid::after {
+  background: var(--node-cat-color, var(--accent));
+  border-color: rgba(255,255,255,0.45);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.18), 0 0 8px 2px var(--node-cat-color, var(--accent));
+  animation: port-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes port-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.22); }
+}
+
+/* ============================================================
+   右侧面板占位（Step 4）
+   ============================================================ */
+.inspector-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspector-divider {
+  height: 1px;
+  background: var(--panel-border);
+  margin: 2px 0;
+}
+
+.inspector-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-bottom: 2px;
+}
+
+.inspector-type {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.inspector-category,
+.inspector-id,
+.inspector-note {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.inspector-category {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.inspector-category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.inspector-id {
+  color: var(--text-disabled);
+  font-size: 11px;
+}
+
+.inspector-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.inspector-value {
+  color: var(--text-primary);
+}
+
+.inspector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.inspector-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-toggle {
+  width: 38px;
+  height: 20px;
+  border: 1px solid #425276;
+  border-radius: 999px;
+  background: #24324b;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.inspector-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #d4d4e8;
+  transition: transform 0.15s ease;
+}
+
+.inspector-toggle.on {
+  background: #2d5e9b;
+  border-color: #5a9bf6;
+}
+
+.inspector-toggle.on::after {
+  transform: translateX(18px);
+}
+
+.inspector-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.inspector-status-text {
+  min-width: 24px;
+  text-align: right;
+}
+
+.inspector-root {
+  color: #ffd700;
+}
+
+.inspector-props {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inspector-prop-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.inspector-prop-label {
+  color: var(--text-secondary);
+  text-align: right;
+  font-size: 11px;
+}
+
+.inspector-empty {
+  color: var(--text-disabled);
+  font-size: 11px;
+}
+
+.inspector-tree,
+.inspector-node-actions,
+.inspector-children {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.inspector-field {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.inspector-textarea {
+  min-height: 52px;
+  resize: vertical;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.inspector-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.inspector-btn {
+  height: 22px;
+  padding: 0 8px;
+  background: #222237;
+  border: 1px solid #30304a;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.inspector-btn:hover {
+  border-color: #4a4a68;
+  background: #282841;
+}
+
+.inspector-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.inspector-btn.danger {
+  border-color: rgba(224,85,85,0.35);
+  color: #f0b6b6;
+}
+
+.inspector-child-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 6px;
+  background: rgba(22, 22, 36, 0.72);
+  border: 1px solid #2a2a45;
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.inspector-child-item.dragging {
+  opacity: 0.45;
+}
+
+.inspector-drop-line {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent);
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(90,155,246,0.35);
+  border-radius: 999px;
+  z-index: 5;
+}
+
+.dragging-children,
+.dragging-children * {
+  cursor: grabbing !important;
+}
+
+.inspector-child-strip {
+  width: 3px;
+  height: 16px;
+  border-radius: 999px;
+  margin-left: 5px;
+}
+
+.inspector-child-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inspector-child-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.inspector-child-meta {
+  color: var(--text-disabled);
+  font-size: 10px;
+}
+
+.inspector-child-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.inspector-icon-btn {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #30304a;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.inspector-icon-btn:hover {
+  border-color: #4a4a68;
+  color: var(--text-primary);
+}
+
+.inspector-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.recovery-banner {
+  position: fixed;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 250;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(28, 28, 47, 0.96);
+  border: 1px solid #343453;
+  border-radius: 6px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.32);
+}
+
+.recovery-banner.open {
+  display: flex;
+}
+
+.recovery-banner-text {
+  color: var(--text-primary);
+  font-size: 11px;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ===== 左面板：Node Palette ===== -->
+  <div id="left-panel">
+    <div class="panel-collapse-btn-collapsed" id="left-expand-btn" title="展开面板">»</div>
+    <div class="panel-header">
+      <span id="left-panel-title">节点面板</span>
+      <button class="panel-collapse-btn" id="left-collapse-btn" title="折叠面板">«</button>
+    </div>
+    <div class="panel-body" id="left-panel-body">
+      <input type="text" class="search-box" id="node-search" placeholder="搜索节点类型...">
+      <div id="node-palette-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== 左分隔条 ===== -->
+  <div class="divider" id="left-divider"></div>
+
+  <!-- ===== 中央画布区 ===== -->
+  <div id="canvas-area">
+    <canvas id="grid-canvas"></canvas>
+    <canvas id="connection-canvas"></canvas>
+    <div id="node-container"></div>
+    <div id="selection-rect"></div>
+
+    <!-- 工具栏 -->
+    <div id="toolbar">
+      <button class="toolbar-btn" id="btn-new">新建</button>
+      <button class="toolbar-btn" id="btn-load">加载</button>
+      <button class="toolbar-btn" id="btn-save">保存</button>
+      <button class="toolbar-btn disabled" id="btn-undo">撤销</button>
+      <button class="toolbar-btn disabled" id="btn-redo">重做</button>
+      <button class="toolbar-btn" id="btn-layout">布局</button>
+      <button class="toolbar-btn" id="btn-snap">吸附</button>
+      <button class="toolbar-btn" id="btn-validate">验证</button>
+      <button class="toolbar-btn" id="btn-help">帮助</button>
+    </div>
+  </div>
+
+  <!-- ===== 右分隔条 ===== -->
+  <div class="divider" id="right-divider"></div>
+
+  <!-- ===== 右面板：Properties Editor ===== -->
+  <div id="right-panel">
+    <div class="panel-collapse-btn-collapsed" id="right-expand-btn" title="展开面板">«</div>
+    <div class="panel-header">
+      <button class="panel-collapse-btn" id="right-collapse-btn" title="折叠面板">»</button>
+      <span id="right-panel-title">属性编辑器</span>
+    </div>
+    <div class="panel-body" id="right-panel-body">
+      <p class="placeholder-text">点击节点以编辑</p>
+    </div>
+  </div>
+</div>
+
+<div id="context-menu" class="context-menu"></div>
+<div id="validation-panel" class="validation-panel">
+  <div class="validation-panel-header">
+    <span>验证问题</span>
+    <button class="panel-collapse-btn" id="btn-close-validation" title="关闭">×</button>
+  </div>
+  <div id="validation-panel-list" class="validation-panel-list"></div>
+</div>
+<div id="help-overlay" class="help-overlay">
+  <div class="help-dialog">
+    <div class="help-dialog-header">
+      <span>快捷键帮助</span>
+      <button class="panel-collapse-btn" id="btn-close-help" title="关闭">×</button>
+    </div>
+    <div class="help-dialog-body">
+      <div class="help-key">F</div><div class="help-desc">适应视图</div>
+      <div class="help-key">R</div><div class="help-desc">设为 Root</div>
+      <div class="help-key">Escape</div><div class="help-desc">取消当前操作 / 取消选中</div>
+      <div class="help-key">Delete</div><div class="help-desc">删除选中节点或连线</div>
+      <div class="help-key">Ctrl+Z</div><div class="help-desc">撤销</div>
+      <div class="help-key">Ctrl+Shift+Z</div><div class="help-desc">重做</div>
+      <div class="help-key">Ctrl+C / V / X</div><div class="help-desc">复制 / 粘贴 / 剪切</div>
+      <div class="help-key">Shift+拖拽</div><div class="help-desc">临时禁用吸附</div>
+    </div>
+  </div>
+</div>
+<div id="recovery-banner" class="recovery-banner">
+  <div class="recovery-banner-text">检测到未保存的树</div>
+  <button class="toolbar-btn" id="btn-recover-tree">恢复</button>
+  <button class="toolbar-btn" id="btn-discard-recovery">放弃</button>
+</div>
+
+<script>
+/* ============================================================
+   I18N — 所有用户可见文本集中管理
+   ============================================================ */
+const I18N = {
+  // 面板
+  nodePalette:      '节点面板',
+  propertiesEditor: '属性编辑器',
+  searchPlaceholder:'搜索节点类型...',
+  clickToEdit:      '点击节点以编辑',
+  selectedNode:     '已选中节点',
+  type:             '类型',
+  category:         '分类',
+  id:               'ID',
+  enabled:          '状态',
+  enabledOn:        '启用',
+  enabledOff:       '关闭',
+  rootLocked:       'Root 节点不可关闭',
+  inlineEditHint:   '双击标题可展开，拖拽节点可移动。',
+  isRoot:           '当前为 Root 节点',
+  properties:       '属性',
+  tree:             '树',
+  treeName:         '名称',
+  treeDesc:         '描述',
+  onComplete:       '完成后',
+  nodeActions:      '节点操作',
+  setAsRoot:        '设为 Root',
+  rootNode:         'Root 节点',
+  childNodes:       '子节点',
+  noChildren:       '没有子节点',
+  noEditableProps:  '该节点没有可编辑属性',
+  multipleValues:   '多个值',
+  onCompleteRestart:'restart',
+  onCompleteStop:   'stop',
+  addNode:          '添加节点',
+  paste:            '粘贴',
+  fitView:          '适应视图',
+  duplicate:        '复制一份',
+  copyToClipboard:  '复制到剪贴板',
+  cut:              '剪切节点',
+  expandCollapse:   '展开/折叠',
+  pasteProps:       '粘贴属性',
+  disconnectAll:    '断开全部',
+  deleteConnection: '删除连线',
+  unsavedTree:      '检测到未保存的树',
+  recover:          '恢复',
+  discard:          '放弃',
+  validate:         '验证',
+  nodeSequence:     '顺序',
+  nodeSelector:     '选择',
+  nodeParallel:     '并行',
+  nodeRandomSelector:'随机选择',
+  nodeRepeat:       '重复',
+  nodeInvert:       '反转',
+  nodeInjectInput:  '注入输入',
+  nodeWaitFrames:   '等待帧',
+  nodeWaitUntil:    '等待直到',
+  nodeNoop:         '空操作',
+  nodeSetHP:        '设置HP',
+  nodeSetDrive:     '设置Drive',
+  nodeSetPosition:  '设置位置',
+  nodeLog:          '日志',
+  nodeCheckDistance:'检测距离',
+  nodeCheckHP:      '检测HP',
+  nodeCheckStance:  '检测姿态',
+
+  // 工具栏
+  btnNew:    '新建',
+  btnLoad:   '加载',
+  btnSave:   '保存',
+  btnUndo:   '撤销',
+  btnRedo:   '重做',
+  btnLayout: '布局',
+  btnSnap:   '吸附',
+  btnHelp:   '帮助',
+
+  // 面板折叠
+  collapsePanel: '折叠面板',
+  expandPanel:   '展开面板',
+
+  // 类别
+  catComposite:  '组合',
+  catDecorator:  '装饰器',
+  catAction:     '动作',
+  catCondition:  '条件',
+
+  // 通用
+  confirm:    '确认',
+  cancel:     '取消',
+  delete_:    '删除',
+};
+
+/* ============================================================
+   全局状态
+   ============================================================ */
+const state = {
+  // 视口
+  panX: 0,
+  panY: 0,
+  zoom: 1,
+
+  // 面板宽度
+  leftPanelWidth: 200,
+  rightPanelWidth: 260,
+  leftCollapsed: false,
+  rightCollapsed: false,
+
+  // 选择
+  selectedNodeId: null,
+  selectedNodeIds: [],
+
+  // 连线拖拽
+  connectionDrag: null,
+  hoveredConnectionNodeId: null,
+
+  // 连线悬停
+  hoveredConnection: null,
+
+  // 端口悬停
+  hoveredPort: null,
+
+  // 框选
+  marquee: null,
+};
+
+/* ============================================================
+   DOM 引用
+   ============================================================ */
+const $app           = document.getElementById('app');
+const $leftPanel     = document.getElementById('left-panel');
+const $rightPanel    = document.getElementById('right-panel');
+const $leftDivider   = document.getElementById('left-divider');
+const $rightDivider  = document.getElementById('right-divider');
+const $canvasArea    = document.getElementById('canvas-area');
+const $gridCanvas    = document.getElementById('grid-canvas');
+const $connCanvas    = document.getElementById('connection-canvas');
+const $nodeContainer = document.getElementById('node-container');
+const $rightPanelBody = document.getElementById('right-panel-body');
+const $nodeSearch = document.getElementById('node-search');
+const $nodePaletteList = document.getElementById('node-palette-list');
+const $selectionRect = document.getElementById('selection-rect');
+const $contextMenu = document.getElementById('context-menu');
+const $recoveryBanner = document.getElementById('recovery-banner');
+const $btnRecoverTree = document.getElementById('btn-recover-tree');
+const $btnDiscardRecovery = document.getElementById('btn-discard-recovery');
+const $btnLayout = document.getElementById('btn-layout');
+const $btnValidate = document.getElementById('btn-validate');
+const $validationPanel = document.getElementById('validation-panel');
+const $validationPanelList = document.getElementById('validation-panel-list');
+const $btnCloseValidation = document.getElementById('btn-close-validation');
+const $helpOverlay = document.getElementById('help-overlay');
+const $btnCloseHelp = document.getElementById('btn-close-help');
+const $btnSnap = document.getElementById('btn-snap');
+const $btnHelp = document.getElementById('btn-help');
+const $btnUndo = document.getElementById('btn-undo');
+const $btnRedo = document.getElementById('btn-redo');
+
+/* ============================================================
+   面板折叠/展开
+   ============================================================ */
+function toggleLeftPanel() {
+  state.leftCollapsed = !state.leftCollapsed;
+  if (state.leftCollapsed) {
+    $leftPanel.classList.add('collapsed');
+    $leftPanel.style.width = '0';
+  } else {
+    $leftPanel.classList.remove('collapsed');
+    $leftPanel.style.width = state.leftPanelWidth + 'px';
+  }
+  onResize();
+}
+
+function toggleRightPanel() {
+  state.rightCollapsed = !state.rightCollapsed;
+  if (state.rightCollapsed) {
+    $rightPanel.classList.add('collapsed');
+    $rightPanel.style.width = '0';
+  } else {
+    $rightPanel.classList.remove('collapsed');
+    $rightPanel.style.width = state.rightPanelWidth + 'px';
+  }
+  onResize();
+}
+
+document.getElementById('left-collapse-btn').addEventListener('click', toggleLeftPanel);
+document.getElementById('left-expand-btn').addEventListener('click', toggleLeftPanel);
+document.getElementById('right-collapse-btn').addEventListener('click', toggleRightPanel);
+document.getElementById('right-expand-btn').addEventListener('click', toggleRightPanel);
+$btnUndo.addEventListener('click', undo);
+$btnRedo.addEventListener('click', redo);
+$nodeSearch.addEventListener('input', renderNodePalette);
+$btnSnap.addEventListener('click', () => {
+  snapEnabled = !snapEnabled;
+  $btnSnap.classList.toggle('disabled', !snapEnabled);
+});
+$btnLayout.addEventListener('click', autoLayoutTree);
+$btnValidate.addEventListener('click', openValidationPanel);
+$btnCloseValidation.addEventListener('click', closeValidationPanel);
+$btnHelp.addEventListener('click', openHelpOverlay);
+$btnCloseHelp.addEventListener('click', closeHelpOverlay);
+$helpOverlay.addEventListener('mousedown', (e) => {
+  if (e.target === $helpOverlay) closeHelpOverlay();
+});
+$btnRecoverTree.addEventListener('click', () => {
+  if (!recoveredAutosave) return;
+  applyAutosavePayload(recoveredAutosave);
+  showRecoveryBanner(false);
+  recoveredAutosave = null;
+});
+$btnDiscardRecovery.addEventListener('click', () => {
+  recoveredAutosave = null;
+  clearAutosave();
+  showRecoveryBanner(false);
+});
+
+/* ============================================================
+   分隔条拖拽调宽
+   ============================================================ */
+function initDivider(dividerEl, panel, side) {
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  const MIN = side === 'left' ? 150 : 200;
+  const MAX = 600;
+
+  dividerEl.addEventListener('mousedown', (e) => {
+    if (side === 'left' && state.leftCollapsed) return;
+    if (side === 'right' && state.rightCollapsed) return;
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startW = panel.getBoundingClientRect().width;
+    dividerEl.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const dx = side === 'left' ? (e.clientX - startX) : (startX - e.clientX);
+    let newW = Math.round(startW + dx);
+    newW = Math.max(MIN, Math.min(MAX, newW));
+    panel.style.width = newW + 'px';
+
+    if (side === 'left') state.leftPanelWidth = newW;
+    else state.rightPanelWidth = newW;
+
+    onResize();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    dividerEl.classList.remove('active');
+    document.body.style.cursor = '';
+  });
+}
+
+initDivider($leftDivider, $leftPanel, 'left');
+initDivider($rightDivider, $rightPanel, 'right');
+
+/* ============================================================
+   Canvas 尺寸管理
+   ============================================================ */
+function resizeCanvases() {
+  const rect = $canvasArea.getBoundingClientRect();
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  const dpr = window.devicePixelRatio || 1;
+
+  for (const cvs of [$gridCanvas, $connCanvas]) {
+    cvs.width = w * dpr;
+    cvs.height = h * dpr;
+    cvs.style.width = w + 'px';
+    cvs.style.height = h + 'px';
+    cvs.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+}
+
+/* ============================================================
+   背景网格绘制
+   ============================================================ */
+function drawGrid() {
+  const ctx = $gridCanvas.getContext('2d');
+  const rect = $canvasArea.getBoundingClientRect();
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+
+  ctx.clearRect(0, 0, w, h);
+
+  const zoom = state.zoom;
+  const ox = state.panX;
+  const oy = state.panY;
+
+  // 小格 40px
+  const smallStep = 40 * zoom;
+  if (smallStep > 4) { // 太小就不画
+    ctx.beginPath();
+    ctx.strokeStyle = '#222240';
+    ctx.lineWidth = 1;
+
+    const startX = (ox % smallStep + smallStep) % smallStep;
+    for (let x = startX; x < w; x += smallStep) {
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, h);
+    }
+    const startY = (oy % smallStep + smallStep) % smallStep;
+    for (let y = startY; y < h; y += smallStep) {
+      ctx.moveTo(0, Math.round(y) + 0.5);
+      ctx.lineTo(w, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  // 大格 200px
+  const largeStep = 200 * zoom;
+  if (largeStep > 10) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#2a2a45';
+    ctx.lineWidth = 1;
+
+    const startX2 = (ox % largeStep + largeStep) % largeStep;
+    for (let x = startX2; x < w; x += largeStep) {
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, h);
+    }
+    const startY2 = (oy % largeStep + largeStep) % largeStep;
+    for (let y = startY2; y < h; y += largeStep) {
+      ctx.moveTo(0, Math.round(y) + 0.5);
+      ctx.lineTo(w, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+  }
+}
+
+/* ============================================================
+   节点容器 transform 同步
+   ============================================================ */
+function syncNodeContainerTransform() {
+  $nodeContainer.style.transform =
+    `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+}
+
+/* ============================================================
+   统一刷新
+   ============================================================ */
+function onResize() {
+  resizeCanvases();
+  drawGrid();
+  syncNodeContainerTransform();
+  drawConnections();
+}
+
+window.addEventListener('resize', onResize);
+
+/* ============================================================
+   画布平移与缩放
+   ============================================================ */
+
+// --- 刷新画布（平移/缩放后调用）---
+function refreshCanvas() {
+  drawGrid();
+  syncNodeContainerTransform();
+  drawConnections();
+}
+
+function getCanvasPoint(clientX, clientY) {
+  const rect = $canvasArea.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - state.panX) / state.zoom,
+    y: (clientY - rect.top - state.panY) / state.zoom,
+  };
+}
+
+function getCanvasLocalPoint(clientX, clientY) {
+  const rect = $canvasArea.getBoundingClientRect();
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top,
+  };
+}
+
+// --- 中键拖拽平移 ---
+let midDragging = false;
+let midStartX = 0, midStartY = 0;
+let midStartPanX = 0, midStartPanY = 0;
+
+$canvasArea.addEventListener('mousedown', (e) => {
+  if (e.button !== 1) return; // 中键
+  e.preventDefault();
+  midDragging = true;
+  midStartX = e.clientX;
+  midStartY = e.clientY;
+  midStartPanX = state.panX;
+  midStartPanY = state.panY;
+  $canvasArea.style.cursor = 'grabbing';
+});
+
+// --- 右键拖拽平移（>3px 才判定为拖拽） ---
+let rightDown = false;
+let rightDragging = false;
+let rightStartX = 0, rightStartY = 0;
+let rightStartPanX = 0, rightStartPanY = 0;
+
+$canvasArea.addEventListener('mousedown', (e) => {
+  if (e.button !== 2) return; // 右键
+  closeContextMenu();
+  e.preventDefault();
+  rightDown = true;
+  rightDragging = false;
+  rightStartX = e.clientX;
+  rightStartY = e.clientY;
+  rightStartPanX = state.panX;
+  rightStartPanY = state.panY;
+});
+
+// --- 共用 mousemove ---
+window.addEventListener('mousemove', (e) => {
+  // 中键拖拽
+  if (midDragging) {
+    state.panX = midStartPanX + (e.clientX - midStartX);
+    state.panY = midStartPanY + (e.clientY - midStartY);
+    refreshCanvas();
+  }
+
+  // 右键拖拽
+  if (rightDown) {
+    const dx = e.clientX - rightStartX;
+    const dy = e.clientY - rightStartY;
+    if (!rightDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      rightDragging = true;
+      $canvasArea.style.cursor = 'grabbing';
+    }
+    if (rightDragging) {
+      state.panX = rightStartPanX + dx;
+      state.panY = rightStartPanY + dy;
+      refreshCanvas();
+    }
+  }
+});
+
+// --- 共用 mouseup ---
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 1 && midDragging) {
+    midDragging = false;
+    $canvasArea.style.cursor = '';
+  }
+  if (e.button === 2 && rightDown) {
+    rightDown = false;
+    if (suppressNextContextMenu) {
+      suppressNextContextMenu = false;
+      rightDragging = false;
+      return;
+    }
+    if (rightDragging) {
+      $canvasArea.style.cursor = '';
+    } else {
+      const nodeEl = e.target.closest('.bt-node');
+      const localPoint = getCanvasLocalPoint(e.clientX, e.clientY);
+      const connection = nodeEl ? null : hitTestConnections(localPoint);
+
+      if (nodeEl) {
+        const nodeId = nodeEl.dataset.nodeId;
+        selectNode(nodeId);
+        const node = treeData.nodes[nodeId];
+        const reg = NODE_TYPES[node?.type];
+        openContextMenu(e.clientX, e.clientY, [
+          { label: treeData.root === nodeId ? I18N.rootNode : I18N.setAsRoot, disabled: treeData.root === nodeId, onClick: () => setNodeRoot(nodeId) },
+          { label: I18N.duplicate, onClick: () => { const dup = duplicateNode(nodeId); if (dup) selectNode(dup.id); } },
+          { label: I18N.copyToClipboard, onClick: () => { nodeClipboard = serializeNodesForClipboard([nodeId]); } },
+          { label: I18N.cut, onClick: () => { nodeClipboard = serializeNodesForClipboard([nodeId]); deleteNode(nodeId); } },
+          { label: I18N.expandCollapse, disabled: !reg?.expandable, onClick: () => toggleNodeExpand(nodeId) },
+          { label: I18N.pasteProps, disabled: !nodeClipboard || nodeClipboard.length !== 1 || nodeClipboard[0].type !== node?.type, onClick: () => applyNodePropertiesFromClipboard(nodeId) },
+          { separator: true },
+          { label: I18N.disconnectAll, onClick: () => disconnectAllForNode(nodeId) },
+          { label: I18N.delete_, onClick: () => deleteNode(nodeId) },
+        ]);
+      } else if (connection) {
+        state.hoveredConnection = connection;
+        drawConnections();
+        openContextMenu(e.clientX, e.clientY, [
+          { label: I18N.deleteConnection, onClick: () => removeConnection(connection.sourceId, connection.targetId) },
+        ]);
+      } else {
+        openContextMenu(e.clientX, e.clientY, [
+          { label: getNodeDisplayName('Sequence'), onClick: () => { const p = getCanvasPoint(e.clientX, e.clientY); addNodeToCanvas('Sequence', Math.round(p.x - 80), Math.round(p.y - 20)); } },
+          { label: getNodeDisplayName('Repeat'), onClick: () => { const p = getCanvasPoint(e.clientX, e.clientY); addNodeToCanvas('Repeat', Math.round(p.x - 80), Math.round(p.y - 20)); } },
+          { label: getNodeDisplayName('InjectInput'), onClick: () => { const p = getCanvasPoint(e.clientX, e.clientY); addNodeToCanvas('InjectInput', Math.round(p.x - 80), Math.round(p.y - 20)); } },
+          { label: getNodeDisplayName('CheckHP'), onClick: () => { const p = getCanvasPoint(e.clientX, e.clientY); addNodeToCanvas('CheckHP', Math.round(p.x - 80), Math.round(p.y - 20)); } },
+          { separator: true },
+          { label: I18N.addNode, submenu: getAddNodeSubmenu(e.clientX, e.clientY) },
+          { label: I18N.paste, disabled: !nodeClipboard, onClick: () => pasteNodeFromClipboard(e.clientX, e.clientY) },
+          { label: I18N.fitView, onClick: () => fitViewToNodes() },
+        ]);
+      }
+    }
+    // rightDragging === false 时表示是右键点击（未拖拽），后续步骤处理右键菜单
+    rightDragging = false;
+  }
+});
+
+// --- 禁用画布区域右键默认菜单 ---
+$canvasArea.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+// --- 滚轮缩放（朝鼠标位置） ---
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 3.0;
+const ZOOM_FACTOR = 0.001;
+
+$canvasArea.addEventListener('wheel', (e) => {
+  e.preventDefault();
+
+  const oldZoom = state.zoom;
+  // 缩放系数：向上滚放大，向下滚缩小
+  const delta = -e.deltaY * ZOOM_FACTOR;
+  let newZoom = oldZoom * (1 + delta);
+  newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+
+  // 鼠标在画布区域内的坐标
+  const rect = $canvasArea.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // 缩放中心：保持鼠标指向的画布坐标不变
+  state.panX = mx - (mx - state.panX) * (newZoom / oldZoom);
+  state.panY = my - (my - state.panY) * (newZoom / oldZoom);
+  state.zoom = newZoom;
+
+  refreshCanvas();
+}, { passive: false });
+
+// --- 防止中键点击自动滚动 ---
+$canvasArea.addEventListener('auxclick', (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+
+/* ============================================================
+   节点类型注册表
+   ============================================================ */
+const CATEGORIES = {
+  composite:  { color: '#3a7ebf', label: I18N.catComposite },
+  decorator:  { color: '#4a9a6a', label: I18N.catDecorator },
+  action:     { color: '#c07838', label: I18N.catAction },
+  condition:  { color: '#b89a30', label: I18N.catCondition },
+};
+
+// 属性定义: { key, label, type: 'text'|'number'|'select'|'checkbox', options?, default }
+const NODE_TYPES = {};
+
+function registerNodeType(type, def) {
+  NODE_TYPES[type] = {
+    type,
+    displayName: def.displayName || type,
+    category: def.category,
+    expandable: def.expandable !== false,       // 默认可展开
+    hasOutput: def.hasOutput !== false,          // 默认有输出端口
+    maxChildren: def.maxChildren ?? null,
+    props: def.props || [],                     // 属性定义列表
+    summary: def.summary || (() => ''),         // 摘要生成函数 (nodeData) => string
+    description: def.description || '',
+  };
+}
+
+function getNodeDisplayName(type) {
+  return NODE_TYPES[type]?.displayName || type;
+}
+
+// --- Composite ---
+registerNodeType('Sequence', {
+  displayName: I18N.nodeSequence,
+  category: 'composite',
+  expandable: false,
+  description: '依次执行子节点，任一失败则失败',
+  summary: (n) => `${(n.children||[]).length} 个子节点`,
+});
+registerNodeType('Selector', {
+  displayName: I18N.nodeSelector,
+  category: 'composite',
+  expandable: false,
+  description: '依次尝试子节点，任一成功则成功',
+  summary: (n) => `${(n.children||[]).length} 个子节点`,
+});
+registerNodeType('Parallel', {
+  displayName: I18N.nodeParallel,
+  category: 'composite',
+  expandable: false,
+  description: '同时执行所有子节点',
+  summary: (n) => `${(n.children||[]).length} 个子节点`,
+});
+registerNodeType('RandomSelector', {
+  displayName: I18N.nodeRandomSelector,
+  category: 'composite',
+  expandable: false,
+  description: '随机选一个子节点执行',
+  summary: (n) => `${(n.children||[]).length} 个子节点 (随机)`,
+});
+
+// --- Decorator ---
+registerNodeType('Repeat', {
+  displayName: I18N.nodeRepeat,
+  category: 'decorator',
+  maxChildren: 1,
+  description: '重复子节点 N 次或永远',
+  props: [
+    { key: 'count', label: '次数', type: 'text', default: 'forever' },
+  ],
+  summary: (n) => {
+    const c = n.properties?.count;
+    return (!c || c === 'forever') ? '永远' : `×${c}`;
+  },
+});
+registerNodeType('Invert', {
+  displayName: I18N.nodeInvert,
+  category: 'decorator',
+  maxChildren: 1,
+  expandable: false,
+  description: '反转子节点结果',
+  summary: () => '反转结果',
+});
+
+// --- Action ---
+registerNodeType('InjectInput', {
+  displayName: I18N.nodeInjectInput,
+  category: 'action',
+  hasOutput: false,
+  description: '注入按键 N 帧',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'inputs', label: '输入', type: 'text', default: 'FORWARD' },
+    { key: 'frames', label: '帧数', type: 'number', default: 60 },
+    { key: 'relative', label: '相对', type: 'checkbox', default: true },
+  ],
+  summary: (n) => {
+    const p = n.properties || {};
+    const inputs = p.inputs || 'FORWARD';
+    const short = typeof inputs === 'string' ? inputs : (Array.isArray(inputs) ? inputs.join('+') : '');
+    return `${p.target||'P2'}: ${short} ${p.frames||60}f`;
+  },
+});
+registerNodeType('WaitFrames', {
+  displayName: I18N.nodeWaitFrames,
+  category: 'action',
+  hasOutput: false,
+  description: '等待 N 帧',
+  props: [
+    { key: 'frames', label: '帧数', type: 'number', default: 30 },
+  ],
+  summary: (n) => `${n.properties?.frames || 30}f`,
+});
+registerNodeType('WaitUntil', {
+  displayName: I18N.nodeWaitUntil,
+  category: 'action',
+  hasOutput: false,
+  description: '等待条件成立',
+  props: [
+    { key: 'condition', label: '条件', type: 'text', default: '' },
+    { key: 'timeout', label: '超时', type: 'number', default: 300 },
+  ],
+  summary: (n) => n.properties?.condition || '等待...',
+});
+registerNodeType('Noop', {
+  displayName: I18N.nodeNoop,
+  category: 'action',
+  hasOutput: false,
+  expandable: false,
+  description: '空操作',
+  summary: () => '',
+});
+registerNodeType('SetHP', {
+  displayName: I18N.nodeSetHP,
+  category: 'action',
+  hasOutput: false,
+  description: '设置 HP',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'value', label: '数值', type: 'number', default: 10000 },
+    { key: 'lock', label: '锁定', type: 'checkbox', default: false },
+  ],
+  summary: (n) => `${n.properties?.target||'P2'} HP=${n.properties?.value||10000}`,
+});
+registerNodeType('SetDrive', {
+  displayName: I18N.nodeSetDrive,
+  category: 'action',
+  hasOutput: false,
+  description: '设置 Drive',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'value', label: '数值', type: 'number', default: 10000 },
+    { key: 'lock', label: '锁定', type: 'checkbox', default: false },
+  ],
+  summary: (n) => `${n.properties?.target||'P2'} Drive=${n.properties?.value||10000}`,
+});
+registerNodeType('SetPosition', {
+  displayName: I18N.nodeSetPosition,
+  category: 'action',
+  hasOutput: false,
+  description: '传送角色',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'x', label: 'X', type: 'number', default: 0 },
+    { key: 'y', label: 'Y', type: 'number', default: 0 },
+  ],
+  summary: (n) => `${n.properties?.target||'P2'} (${n.properties?.x||0}, ${n.properties?.y||0})`,
+});
+registerNodeType('Log', {
+  displayName: I18N.nodeLog,
+  category: 'action',
+  hasOutput: false,
+  description: '调试输出',
+  props: [
+    { key: 'message', label: '消息', type: 'text', default: '' },
+  ],
+  summary: (n) => n.properties?.message || '',
+});
+
+// --- Condition ---
+registerNodeType('CheckDistance', {
+  displayName: I18N.nodeCheckDistance,
+  category: 'condition',
+  hasOutput: false,
+  description: '检查 P1-P2 水平距离',
+  props: [
+    { key: 'op', label: '运算', type: 'select', options: ['<', '<=', '>', '>=', '=='], default: '<' },
+    { key: 'value', label: '数值', type: 'number', default: 1 },
+  ],
+  summary: (n) => `距离 ${n.properties?.op||'<'} ${n.properties?.value||1}`,
+});
+registerNodeType('CheckHP', {
+  displayName: I18N.nodeCheckHP,
+  category: 'condition',
+  hasOutput: false,
+  description: '检查 HP',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'op', label: '运算', type: 'select', options: ['<', '<=', '>', '>=', '=='], default: '<' },
+    { key: 'value', label: '数值', type: 'number', default: 5000 },
+  ],
+  summary: (n) => `${n.properties?.target||'P2'} HP ${n.properties?.op||'<'} ${n.properties?.value||5000}`,
+});
+registerNodeType('CheckStance', {
+  displayName: I18N.nodeCheckStance,
+  category: 'condition',
+  hasOutput: false,
+  description: '检查姿态',
+  props: [
+    { key: 'target', label: '目标', type: 'select', options: ['P1', 'P2'], default: 'P2' },
+    { key: 'stance', label: '姿态', type: 'select', options: ['stand', 'crouch', 'air'], default: 'stand' },
+  ],
+  summary: (n) => `${n.properties?.target||'P2'} ${n.properties?.stance||'stand'}`,
+});
+
+/* ============================================================
+   树数据模型
+   ============================================================ */
+let nextNodeId = 1;
+
+const treeData = {
+  name: '未命名',
+  description: '',
+  root: null,
+  nodes: {},          // id -> node data
+  onComplete: 'restart',
+};
+
+const undoStack = [];
+const redoStack = [];
+const UNDO_LIMIT = 50;
+let isRestoringHistory = false;
+let paletteDrag = null;
+let suppressNextPaletteClick = false;
+let nodeClipboard = null;
+const GRID_SIZE = 40;
+let snapEnabled = true;
+let lastMouseClientX = 0;
+let lastMouseClientY = 0;
+const AUTOSAVE_KEY = 'utr_editor_autosave_v1';
+let autosaveTimer = null;
+let recoveredAutosave = null;
+let validationIssues = [];
+let validationRefreshTimer = null;
+let suppressNextContextMenu = false;
+
+function generateId() {
+  return 'node_' + (nextNodeId++);
+}
+
+function createSnapshot() {
+  return JSON.parse(JSON.stringify({
+    treeData,
+    nextNodeId,
+    viewport: {
+      panX: state.panX,
+      panY: state.panY,
+      zoom: state.zoom,
+      selectedNodeIds: state.selectedNodeIds,
+    },
+  }));
+}
+
+function serializeNodesForClipboard(nodeIds) {
+  const ids = [...new Set(nodeIds)].filter((id) => treeData.nodes[id]);
+  if (!ids.length) return null;
+  return ids.map((id) => JSON.parse(JSON.stringify(treeData.nodes[id])));
+}
+
+function getPasteAnchorPoint(clientX = lastMouseClientX, clientY = lastMouseClientY) {
+  const canvasRect = $canvasArea.getBoundingClientRect();
+  const insideCanvas =
+    clientX >= canvasRect.left && clientX <= canvasRect.right &&
+    clientY >= canvasRect.top && clientY <= canvasRect.bottom;
+  if (insideCanvas) return getCanvasPoint(clientX, clientY);
+  return getCanvasPoint(canvasRect.left + canvasRect.width / 2, canvasRect.top + canvasRect.height / 2);
+}
+
+function buildAutosavePayload() {
+  return {
+    treeData: JSON.parse(JSON.stringify(treeData)),
+    nextNodeId,
+    viewport: {
+      panX: state.panX,
+      panY: state.panY,
+      zoom: state.zoom,
+      selectedNodeIds: state.selectedNodeIds,
+    },
+    savedAt: Date.now(),
+  };
+}
+
+function writeAutosaveNow() {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(buildAutosavePayload()));
+  } catch {}
+}
+
+function scheduleAutosave() {
+  if (isRestoringHistory) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(writeAutosaveNow, 500);
+}
+
+function clearAutosave() {
+  clearTimeout(autosaveTimer);
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+  } catch {}
+}
+
+function showRecoveryBanner(show) {
+  $recoveryBanner.classList.toggle('open', show);
+}
+
+function applyAutosavePayload(payload) {
+  if (!payload) return;
+  applySnapshot({
+    treeData: payload.treeData,
+    nextNodeId: payload.nextNodeId,
+    viewport: payload.viewport,
+  });
+}
+
+function applySnapshot(snapshot) {
+  isRestoringHistory = true;
+  const preservedSelectedId = state.selectedNodeId;
+
+  for (const id of Object.keys(nodeDomMap)) removeNodeDom(id);
+  for (const key of Object.keys(treeData)) delete treeData[key];
+  Object.assign(treeData, JSON.parse(JSON.stringify(snapshot.treeData)));
+  nextNodeId = snapshot.nextNodeId;
+
+  state.panX = snapshot.viewport.panX;
+  state.panY = snapshot.viewport.panY;
+  state.zoom = snapshot.viewport.zoom;
+  state.selectedNodeId = null;
+  state.selectedNodeIds = [];
+  state.connectionDrag = null;
+  state.hoveredConnection = null;
+  state.hoveredPort = null;
+  state.marquee = null;
+
+  for (const node of Object.values(treeData.nodes)) {
+    renderNode(node);
+  }
+
+  onResize();
+
+  const restoredSelectedIds = (snapshot.viewport.selectedNodeIds || []).filter((id) => treeData.nodes[id]);
+  if (restoredSelectedIds.length) setSelectedNodes(restoredSelectedIds);
+  else if (preservedSelectedId && treeData.nodes[preservedSelectedId]) selectNode(preservedSelectedId);
+  else renderRightPanelPlaceholder();
+
+  updateHistoryButtons();
+  isRestoringHistory = false;
+}
+
+function pushUndoSnapshot(snapshot = createSnapshot()) {
+  if (isRestoringHistory) return;
+  undoStack.push(snapshot);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+  scheduleAutosave();
+}
+
+function updateHistoryButtons() {
+  const undoDisabled = undoStack.length === 0;
+  const redoDisabled = redoStack.length === 0;
+  $btnUndo.classList.toggle('disabled', undoDisabled);
+  $btnRedo.classList.toggle('disabled', redoDisabled);
+  $btnUndo.disabled = undoDisabled;
+  $btnRedo.disabled = redoDisabled;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(createSnapshot());
+  applySnapshot(undoStack.pop());
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(createSnapshot());
+  applySnapshot(redoStack.pop());
+}
+
+function isNodeEnabled(nodeData) {
+  return !!nodeData && nodeData.enabled !== false;
+}
+
+function setNodeEnabled(id, enabled, options = {}) {
+  const node = treeData.nodes[id];
+  if (!node) return;
+  if (!options.skipHistory && isNodeEnabled(node) !== !!enabled && !(treeData.root === id && enabled === false)) {
+    pushUndoSnapshot();
+  }
+  if (treeData.root === id) {
+    node.enabled = true;
+  } else {
+    node.enabled = !!enabled;
+  }
+  updateNodeEnabledState(id);
+  if (state.selectedNodeId === id) renderRightPanelSelection(id);
+  scheduleValidationRefresh();
+}
+
+function setNodesEnabled(ids, enabled) {
+  const targets = ids.map((id) => treeData.nodes[id]).filter(Boolean);
+  const effectiveTargets = targets.filter((node) => treeData.root !== node.id);
+  if (!effectiveTargets.length) return false;
+  const changed = effectiveTargets.some((node) => isNodeEnabled(node) !== !!enabled);
+  if (!changed) return false;
+  pushUndoSnapshot();
+  effectiveTargets.forEach((node) => {
+    node.enabled = !!enabled;
+    updateNodeEnabledState(node.id);
+  });
+  setSelectedNodes(ids);
+  scheduleValidationRefresh();
+  return true;
+}
+
+function applyPropertyToNodes(ids, key, value) {
+  const nodes = ids.map((id) => treeData.nodes[id]).filter(Boolean);
+  if (!nodes.length) return false;
+  const changed = nodes.some((node) => node.properties[key] !== value);
+  if (!changed) return false;
+  pushUndoSnapshot();
+  nodes.forEach((node) => {
+    node.properties[key] = value;
+    updateNodeSummary(node.id);
+    syncPropertyControls(node.id, key, 'panel');
+  });
+  setSelectedNodes(ids);
+  scheduleValidationRefresh();
+  return true;
+}
+
+function closeAllCustomSelects(exceptControl) {
+  document.querySelectorAll('.bt-node-prop-select.open').forEach((el) => {
+    if (el !== exceptControl) el.classList.remove('open');
+  });
+}
+
+function createNodeData(type, x, y) {
+  const reg = NODE_TYPES[type];
+  if (!reg) return null;
+
+  const id = generateId();
+  const properties = {};
+  for (const p of reg.props) {
+    properties[p.key] = p.default;
+  }
+
+  const node = {
+    id,
+    type,
+    category: reg.category,
+    enabled: true,
+    properties,
+    children: [],
+    display: { x, y, collapsed: true },
+  };
+
+  treeData.nodes[id] = node;
+  return node;
+}
+
+function deleteNodeData(id) {
+  // 从所有父节点的 children 中移除
+  for (const n of Object.values(treeData.nodes)) {
+    const idx = n.children.indexOf(id);
+    if (idx !== -1) n.children.splice(idx, 1);
+  }
+  // 如果是 root
+  if (treeData.root === id) treeData.root = null;
+  // 删除
+  delete treeData.nodes[id];
+}
+
+function deleteNode(id, options = {}) {
+  if (!treeData.nodes[id]) return false;
+  if (!options.skipHistory) pushUndoSnapshot();
+  if (state.selectedNodeId === id) state.selectedNodeId = null;
+  state.selectedNodeIds = (state.selectedNodeIds || []).filter((nodeId) => nodeId !== id);
+  deleteNodeData(id);
+  removeNodeDom(id);
+  renderRightPanelPlaceholder();
+  state.hoveredConnection = null;
+  state.hoveredPort = null;
+  drawConnections();
+  scheduleValidationRefresh();
+  return true;
+}
+
+function deleteSelectedNodes() {
+  const ids = [...(state.selectedNodeIds || [])].filter((id) => treeData.nodes[id]);
+  if (!ids.length) return false;
+  pushUndoSnapshot();
+  ids.forEach((id) => deleteNode(id, { skipHistory: true }));
+  setSelectedNodes([]);
+  return true;
+}
+
+function duplicateNode(id, x = null, y = null) {
+  const source = treeData.nodes[id];
+  if (!source) return null;
+  nodeClipboard = serializeNodesForClipboard([id]);
+  const anchor = x == null || y == null ? getPasteAnchorPoint() : { x, y };
+  const node = addNodeToCanvas(source.type, x ?? Math.round(anchor.x - 80), y ?? Math.round(anchor.y - 20));
+  if (!node) return null;
+  node.enabled = source.enabled !== false;
+  node.properties = JSON.parse(JSON.stringify(source.properties));
+  node.display.collapsed = source.display.collapsed;
+  updateNodeEnabledState(node.id);
+  updateNodeSummary(node.id);
+  const el = nodeDomMap[node.id];
+  if (el) {
+    if (node.display.collapsed === false) el.classList.add('expanded');
+    const toggle = el.querySelector('.bt-node-toggle');
+    if (toggle) toggle.textContent = node.display.collapsed ? '▶' : '▼';
+  }
+  return node;
+}
+
+/* ============================================================
+   节点 DOM 渲染
+   ============================================================ */
+const nodeDomMap = {};  // id -> DOM element
+
+function getPortScreenPosition(portEl) {
+  if (!portEl) return null;
+  const portRect = portEl.getBoundingClientRect();
+  const canvasRect = $canvasArea.getBoundingClientRect();
+  return {
+    x: portRect.left + portRect.width / 2 - canvasRect.left,
+    y: portRect.top + portRect.height / 2 - canvasRect.top,
+  };
+}
+
+function getNodePortPosition(nodeId, portType) {
+  const el = nodeDomMap[nodeId];
+  if (!el) return null;
+  const portEl = el.querySelector(`.bt-port-${portType}`);
+  return getPortScreenPosition(portEl);
+}
+
+function getConnectionStrokeColor(node) {
+  const cat = CATEGORIES[node?.category];
+  return cat?.color || '#3a3a55';
+}
+
+function getBezierControlPoints(from, to) {
+  const dy = Math.max(60, Math.abs(to.y - from.y) * 0.5);
+  return {
+    cp1x: from.x,
+    cp1y: from.y + dy,
+    cp2x: to.x,
+    cp2y: to.y - dy,
+  };
+}
+
+function drawConnectionLabel(ctx, from, to, index) {
+  const t = 0.5;
+  const { cp1x, cp1y, cp2x, cp2y } = getBezierControlPoints(from, to);
+  const x =
+    Math.pow(1 - t, 3) * from.x +
+    3 * Math.pow(1 - t, 2) * t * cp1x +
+    3 * (1 - t) * Math.pow(t, 2) * cp2x +
+    Math.pow(t, 3) * to.x;
+  const y =
+    Math.pow(1 - t, 3) * from.y +
+    3 * Math.pow(1 - t, 2) * t * cp1y +
+    3 * (1 - t) * Math.pow(t, 2) * cp2y +
+    Math.pow(t, 3) * to.y;
+
+  ctx.fillStyle = '#6c6c8a';
+  ctx.font = '18px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(index + 1), x, y - 14);
+}
+
+function getBezierPoint(from, to, t) {
+  const { cp1x, cp1y, cp2x, cp2y } = getBezierControlPoints(from, to);
+  return {
+    x:
+      Math.pow(1 - t, 3) * from.x +
+      3 * Math.pow(1 - t, 2) * t * cp1x +
+      3 * (1 - t) * Math.pow(t, 2) * cp2x +
+      Math.pow(t, 3) * to.x,
+    y:
+      Math.pow(1 - t, 3) * from.y +
+      3 * Math.pow(1 - t, 2) * t * cp1y +
+      3 * (1 - t) * Math.pow(t, 2) * cp2y +
+      Math.pow(t, 3) * to.y,
+  };
+}
+
+function drawConnectionFlow(ctx, from, to, color) {
+  const t = (performance.now() % 2000) / 2000;
+  const point = getBezierPoint(from, to, t);
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function getConnectionRecords() {
+  const records = [];
+  for (const node of Object.values(treeData.nodes)) {
+    const from = getNodePortPosition(node.id, 'out');
+    if (!from) continue;
+    node.children.forEach((childId, index) => {
+      const to = getNodePortPosition(childId, 'in');
+      if (!to) return;
+      records.push({
+        sourceId: node.id,
+        targetId: childId,
+        index,
+        siblingCount: node.children.length,
+        from,
+        to,
+        color: getConnectionStrokeColor(node),
+      });
+    });
+  }
+  return records;
+}
+
+function isSameConnection(a, b) {
+  return !!a && !!b && a.sourceId === b.sourceId && a.targetId === b.targetId;
+}
+
+function distanceToSegmentSquared(point, a, b) {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const apx = point.x - a.x;
+  const apy = point.y - a.y;
+  const abLenSq = abx * abx + aby * aby;
+  if (!abLenSq) return apx * apx + apy * apy;
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
+  const projX = a.x + abx * t;
+  const projY = a.y + aby * t;
+  const dx = point.x - projX;
+  const dy = point.y - projY;
+  return dx * dx + dy * dy;
+}
+
+function hitTestConnections(localPoint) {
+  const records = getConnectionRecords();
+  let best = null;
+  let bestDistSq = 100;
+
+  for (const record of records) {
+    let prev = getBezierPoint(record.from, record.to, 0);
+    for (let i = 1; i <= 24; i++) {
+      const t = i / 24;
+      const next = getBezierPoint(record.from, record.to, t);
+      const distSq = distanceToSegmentSquared(localPoint, prev, next);
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = {
+          sourceId: record.sourceId,
+          targetId: record.targetId,
+        };
+      }
+      prev = next;
+    }
+  }
+
+  return best;
+}
+
+function removeConnection(sourceId, targetId, options = {}) {
+  const source = treeData.nodes[sourceId];
+  if (!source) return false;
+  const before = source.children.length;
+  if (before === source.children.filter((id) => id !== targetId).length) return false;
+  if (!options.skipHistory) pushUndoSnapshot();
+  source.children = source.children.filter((id) => id !== targetId);
+  if (state.hoveredConnection && state.hoveredConnection.sourceId === sourceId && state.hoveredConnection.targetId === targetId) {
+    state.hoveredConnection = null;
+  }
+  drawConnections();
+  if (state.selectedNodeId === sourceId || state.selectedNodeId === targetId) {
+    renderRightPanelSelection(state.selectedNodeId);
+  }
+  scheduleValidationRefresh();
+  return true;
+}
+
+function beginPropertyHistory(control) {
+  if (isRestoringHistory) return;
+  if (control.dataset.historyPrimed === '1') return;
+  pushUndoSnapshot();
+  control.dataset.historyPrimed = '1';
+}
+
+function endPropertyHistory(control) {
+  delete control.dataset.historyPrimed;
+}
+
+function moveChildNode(parentId, fromIndex, toIndex) {
+  const parent = treeData.nodes[parentId];
+  if (!parent) return false;
+  if (fromIndex === toIndex) return false;
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= parent.children.length || toIndex >= parent.children.length) return false;
+  pushUndoSnapshot();
+  const [childId] = parent.children.splice(fromIndex, 1);
+  parent.children.splice(toIndex, 0, childId);
+  drawConnections();
+  if (state.selectedNodeId === parentId) renderRightPanelSelection(parentId);
+  return true;
+}
+
+function reorderChildNode(parentId, fromIndex, toIndex) {
+  const parent = treeData.nodes[parentId];
+  if (!parent) return false;
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= parent.children.length || toIndex >= parent.children.length) return false;
+  if (fromIndex === toIndex) return false;
+  pushUndoSnapshot();
+  const [childId] = parent.children.splice(fromIndex, 1);
+  parent.children.splice(toIndex, 0, childId);
+  drawConnections();
+  if (state.selectedNodeId === parentId) renderRightPanelSelection(parentId);
+  return true;
+}
+
+function clearChildDropIndicators(host) {
+  if (!host) return;
+  host.querySelectorAll('.inspector-child-item').forEach((el) => el.classList.remove('dragging'));
+  const line = host.querySelector('.inspector-drop-line');
+  if (line) line.style.display = 'none';
+}
+
+let childReorderDrag = null;
+const CHILD_DRAG_THRESHOLD = 4;
+
+function getChildDropPlacement(host, clientY) {
+  const items = [...host.querySelectorAll('.inspector-child-item')];
+  for (const item of items) {
+    const rect = item.getBoundingClientRect();
+    const index = Number(item.dataset.childIndex);
+    if (clientY < rect.top + rect.height / 2) {
+      return { item, index, before: true };
+    }
+    if (clientY <= rect.bottom) {
+      return { item, index, before: false };
+    }
+  }
+  const lastItem = items[items.length - 1] || null;
+  return lastItem ? { item: lastItem, index: Number(lastItem.dataset.childIndex), before: false } : null;
+}
+
+function showChildDropIndicator(host, placement) {
+  const line = host?.querySelector('.inspector-drop-line');
+  if (!host || !line || !placement) return;
+  const hostRect = host.getBoundingClientRect();
+  const itemRect = placement.item.getBoundingClientRect();
+  const gapOffset = 4;
+  const top = placement.before
+    ? Math.max(0, itemRect.top - hostRect.top - gapOffset)
+    : itemRect.bottom - hostRect.top + gapOffset;
+  line.style.top = `${Math.round(top)}px`;
+  line.style.display = 'block';
+}
+
+function beginChildReorderDrag(parentId, fromIndex, itemEl, host, clientY) {
+  childReorderDrag = {
+    parentId,
+    fromIndex,
+    itemEl,
+    host,
+    startY: clientY,
+    active: false,
+    placement: null,
+  };
+}
+
+function updateChildReorderDrag(clientY) {
+  if (!childReorderDrag) return;
+  const drag = childReorderDrag;
+  if (!drag.active) {
+    if (Math.abs(clientY - drag.startY) < CHILD_DRAG_THRESHOLD) return;
+    drag.active = true;
+    drag.itemEl.classList.add('dragging');
+    document.body.classList.add('dragging-children');
+  }
+
+  clearChildDropIndicators(drag.host);
+  drag.itemEl.classList.add('dragging');
+  const placement = getChildDropPlacement(drag.host, clientY);
+  if (!placement) {
+    drag.placement = null;
+    return;
+  }
+
+  let toIndex = placement.before ? placement.index : placement.index + 1;
+  if (drag.fromIndex < toIndex) toIndex -= 1;
+  const maxIndex = drag.host.querySelectorAll('.inspector-child-item').length - 1;
+  toIndex = Math.max(0, Math.min(maxIndex, toIndex));
+
+  drag.placement = { ...placement, toIndex };
+  if (toIndex !== drag.fromIndex) {
+    showChildDropIndicator(drag.host, placement);
+  }
+}
+
+function finishChildReorderDrag() {
+  if (!childReorderDrag) return;
+  const drag = childReorderDrag;
+  const placement = drag.placement;
+  const shouldReorder = drag.active && placement && placement.toIndex !== drag.fromIndex;
+  clearChildDropIndicators(drag.host);
+  document.body.classList.remove('dragging-children');
+  childReorderDrag = null;
+  if (shouldReorder) {
+    reorderChildNode(drag.parentId, drag.fromIndex, placement.toIndex);
+  }
+}
+
+function updateTreeField(key, value) {
+  if (treeData[key] === value) return;
+  pushUndoSnapshot();
+  treeData[key] = value;
+}
+
+function createInspectorTextControl(value, options = {}) {
+  const control = options.multiline ? document.createElement('textarea') : document.createElement('input');
+  control.className = 'bt-node-prop-input' + (options.multiline ? ' inspector-textarea' : '');
+  if (!options.multiline) control.type = 'text';
+  control.value = value ?? '';
+  control.addEventListener('focus', () => beginPropertyHistory(control));
+  control.addEventListener('input', () => options.onInput?.(control.value));
+  control.addEventListener('blur', () => endPropertyHistory(control));
+  return control;
+}
+
+function createInspectorSelectControl(value, selectOptions, onChange) {
+  const control = document.createElement('div');
+  control.className = 'bt-node-prop-select';
+  control.dataset.controlType = 'custom-select';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'bt-node-prop-select-btn';
+  button.textContent = value ?? '';
+  const menu = document.createElement('div');
+  menu.className = 'bt-node-prop-select-menu';
+
+  for (const opt of selectOptions) {
+    const optionBtn = document.createElement('button');
+    optionBtn.type = 'button';
+    optionBtn.className = 'bt-node-prop-select-option';
+    optionBtn.textContent = opt;
+    optionBtn.dataset.optionValue = opt;
+    if (value == opt) optionBtn.classList.add('active');
+    optionBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (button.textContent !== opt) pushUndoSnapshot();
+      updateCustomSelectControl(control, opt);
+      onChange(opt);
+      control.classList.remove('open');
+    });
+    menu.appendChild(optionBtn);
+  }
+
+  button.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const willOpen = !control.classList.contains('open');
+    closeAllCustomSelects(control);
+    control.classList.toggle('open', willOpen);
+  });
+
+  control.appendChild(button);
+  control.appendChild(menu);
+  return control;
+}
+
+function renderInspectorTreeSection(host) {
+  if (!host) return;
+
+  const title = document.createElement('div');
+  title.className = 'inspector-label';
+  title.textContent = I18N.tree;
+  host.appendChild(title);
+
+  const treeHost = document.createElement('div');
+  treeHost.className = 'inspector-tree';
+  host.appendChild(treeHost);
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'inspector-field';
+  const nameLabel = document.createElement('div');
+  nameLabel.className = 'inspector-prop-label';
+  nameLabel.textContent = I18N.treeName;
+  const nameInput = createInspectorTextControl(treeData.name, {
+    onInput: (value) => updateTreeField('name', value),
+  });
+  nameRow.appendChild(nameLabel);
+  nameRow.appendChild(nameInput);
+  treeHost.appendChild(nameRow);
+
+  const descRow = document.createElement('div');
+  descRow.className = 'inspector-field';
+  const descLabel = document.createElement('div');
+  descLabel.className = 'inspector-prop-label';
+  descLabel.textContent = I18N.treeDesc;
+  const descInput = createInspectorTextControl(treeData.description, {
+    multiline: true,
+    onInput: (value) => updateTreeField('description', value),
+  });
+  descRow.appendChild(descLabel);
+  descRow.appendChild(descInput);
+  treeHost.appendChild(descRow);
+
+  const completeRow = document.createElement('div');
+  completeRow.className = 'inspector-field';
+  const completeLabel = document.createElement('div');
+  completeLabel.className = 'inspector-prop-label';
+  completeLabel.textContent = I18N.onComplete;
+  const completeSelect = createInspectorSelectControl(treeData.onComplete, [I18N.onCompleteRestart, I18N.onCompleteStop], (value) => {
+    updateTreeField('onComplete', value);
+  });
+  completeRow.appendChild(completeLabel);
+  completeRow.appendChild(completeSelect);
+  treeHost.appendChild(completeRow);
+
+  const divider = document.createElement('div');
+  divider.className = 'inspector-divider';
+  host.appendChild(divider);
+}
+
+function addNodeAtViewportCenter(type) {
+  const rect = $canvasArea.getBoundingClientRect();
+  const point = getCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  return addNodeToCanvas(type, Math.round(point.x - 80), Math.round(point.y - 20));
+}
+
+function createPaletteDragPreview(type) {
+  const reg = NODE_TYPES[type];
+  const preview = document.createElement('div');
+  preview.className = 'palette-drag-preview';
+  const title = document.createElement('div');
+  title.className = 'palette-drag-preview-title';
+  title.style.background = CATEGORIES[reg.category]?.color || '#888';
+  title.textContent = getNodeDisplayName(type);
+  preview.appendChild(title);
+  document.body.appendChild(preview);
+  return preview;
+}
+
+function updatePaletteDragPreview(clientX, clientY) {
+  if (!paletteDrag?.previewEl) return;
+  paletteDrag.previewEl.style.left = `${clientX - 80}px`;
+  paletteDrag.previewEl.style.top = `${clientY - 34}px`;
+}
+
+function cancelPaletteDrag() {
+  if (!paletteDrag) return;
+  paletteDrag.previewEl?.remove();
+  paletteDrag = null;
+}
+
+function finishPaletteDrag(clientX, clientY) {
+  if (!paletteDrag) return;
+  const drag = paletteDrag;
+  const overCanvas = document.elementFromPoint(clientX, clientY)?.closest('#canvas-area');
+  if (drag.active && overCanvas) {
+    const point = getCanvasPoint(clientX, clientY);
+    addNodeToCanvas(drag.type, Math.round(point.x - 80), Math.round(point.y - 20));
+  }
+  cancelPaletteDrag();
+}
+
+function fitViewToNodes() {
+  const nodes = Object.values(treeData.nodes);
+  if (!nodes.length) {
+    state.panX = 0;
+    state.panY = 0;
+    state.zoom = 1;
+    refreshCanvas();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const node of nodes) {
+    const height = node.display.collapsed === false ? 120 : 60;
+    minX = Math.min(minX, node.display.x);
+    minY = Math.min(minY, node.display.y);
+    maxX = Math.max(maxX, node.display.x + 160);
+    maxY = Math.max(maxY, node.display.y + height);
+  }
+  const rect = $canvasArea.getBoundingClientRect();
+  const contentW = Math.max(1, maxX - minX + 80);
+  const contentH = Math.max(1, maxY - minY + 80);
+  const zoomX = rect.width / contentW;
+  const zoomY = rect.height / contentH;
+  state.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.min(zoomX, zoomY)));
+  state.panX = rect.width / 2 - ((minX + maxX) / 2) * state.zoom;
+  state.panY = rect.height / 2 - ((minY + maxY) / 2) * state.zoom;
+  refreshCanvas();
+}
+
+function getLayoutNodeHeight(node) {
+  return node.display?.collapsed === false ? 120 : 60;
+}
+
+function autoLayoutTree() {
+  const rootId = treeData.root;
+  const root = treeData.nodes[rootId];
+  if (!root) return false;
+
+  const levelHeight = 160;
+  const siblingGap = 80;
+  const nodeWidth = 160;
+  const visited = new Set();
+
+  function measureSubtree(nodeId) {
+    const node = treeData.nodes[nodeId];
+    if (!node || visited.has(nodeId)) return nodeWidth;
+    visited.add(nodeId);
+    const childIds = node.children.filter((id) => treeData.nodes[id]);
+    if (!childIds.length) return nodeWidth;
+    let total = 0;
+    childIds.forEach((childId, index) => {
+      total += measureSubtree(childId);
+      if (index < childIds.length - 1) total += siblingGap;
+    });
+    return Math.max(nodeWidth, total);
+  }
+
+  const subtreeWidths = {};
+  Object.keys(treeData.nodes).forEach((nodeId) => {
+    visited.clear();
+    subtreeWidths[nodeId] = measureSubtree(nodeId);
+  });
+
+  function layoutNode(nodeId, centerX, y) {
+    const node = treeData.nodes[nodeId];
+    if (!node) return;
+    node.display.x = Math.round(centerX - nodeWidth / 2);
+    node.display.y = Math.round(y);
+    const childIds = node.children.filter((id) => treeData.nodes[id]);
+    if (!childIds.length) return;
+
+    const totalWidth = childIds.reduce((sum, childId, index) => {
+      return sum + subtreeWidths[childId] + (index < childIds.length - 1 ? siblingGap : 0);
+    }, 0);
+
+    let cursorX = centerX - totalWidth / 2;
+    childIds.forEach((childId) => {
+      const childCenterX = cursorX + subtreeWidths[childId] / 2;
+      layoutNode(childId, childCenterX, y + levelHeight);
+      cursorX += subtreeWidths[childId] + siblingGap;
+    });
+  }
+
+  pushUndoSnapshot();
+  layoutNode(rootId, 0, 0);
+
+  Object.keys(treeData.nodes).forEach((nodeId) => updateNodePosition(nodeId));
+  fitViewToNodes();
+  scheduleAutosave();
+  return true;
+}
+
+function applyGridSnapToNodes(ids, disableSnap) {
+  if (!snapEnabled || disableSnap) return;
+  ids.forEach((nodeId) => {
+    const node = treeData.nodes[nodeId];
+    if (!node) return;
+    node.display.x = Math.round(node.display.x / GRID_SIZE) * GRID_SIZE;
+    node.display.y = Math.round(node.display.y / GRID_SIZE) * GRID_SIZE;
+    updateNodePosition(nodeId);
+  });
+}
+
+function isMissingRequiredProperty(node, propDef) {
+  const value = node.properties?.[propDef.key];
+  if (propDef.type === 'checkbox') return false;
+  if (propDef.type === 'number') return value == null || Number.isNaN(value);
+  return value == null || value === '';
+}
+
+function validateTree() {
+  const issues = [];
+  const reachable = new Set();
+
+  function dfs(nodeId, path = new Set()) {
+    if (!treeData.nodes[nodeId]) return;
+    if (path.has(nodeId)) {
+      issues.push({ type: 'error', nodeId, message: '检测到循环引用' });
+      return;
+    }
+    path.add(nodeId);
+    reachable.add(nodeId);
+    const node = treeData.nodes[nodeId];
+    node.children.forEach((childId) => dfs(childId, new Set(path)));
+  }
+
+  if (treeData.root) dfs(treeData.root);
+
+  reachable.forEach((nodeId) => {
+    const node = treeData.nodes[nodeId];
+    if (!node) return;
+    const reg = NODE_TYPES[node.type];
+    if (reg?.maxChildren === 1 && node.children.length === 0) {
+      issues.push({ type: 'warning', nodeId: node.id, message: 'Decorator 节点缺少子节点' });
+    }
+    (reg?.props || []).forEach((propDef) => {
+      if (isMissingRequiredProperty(node, propDef)) {
+        issues.push({ type: 'warning', nodeId: node.id, message: `缺少必填属性：${propDef.label}` });
+      }
+    });
+  });
+
+  validationIssues = issues;
+  applyValidationMarkers();
+  return issues;
+}
+
+function renderValidationPanelList() {
+  $validationPanelList.innerHTML = '';
+  validationIssues.forEach((issue) => {
+    const item = document.createElement('div');
+    item.className = `validation-item ${issue.type}`;
+    const node = treeData.nodes[issue.nodeId];
+    item.innerHTML = `
+      <div class="validation-item-title">${issue.message}</div>
+      <div class="validation-item-meta">${node ? getNodeDisplayName(node.type) : issue.nodeId} · ${issue.nodeId}</div>
+    `;
+    item.addEventListener('click', () => {
+      const target = treeData.nodes[issue.nodeId];
+      if (!target) return;
+      selectNode(issue.nodeId);
+      const rect = $canvasArea.getBoundingClientRect();
+      state.panX = rect.width / 2 - (target.display.x + 80) * state.zoom;
+      state.panY = rect.height / 2 - (target.display.y + 30) * state.zoom;
+      refreshCanvas();
+    });
+    $validationPanelList.appendChild(item);
+  });
+}
+
+function scheduleValidationRefresh() {
+  clearTimeout(validationRefreshTimer);
+  validationRefreshTimer = setTimeout(() => {
+    validateTree();
+    if ($validationPanel.classList.contains('open')) {
+      renderValidationPanelList();
+    }
+  }, 0);
+}
+
+function applyValidationMarkers() {
+  Object.keys(nodeDomMap).forEach((nodeId) => {
+    const el = nodeDomMap[nodeId];
+    if (!el) return;
+    el.classList.remove('has-validation');
+    const marker = el.querySelector('.bt-node-validation');
+    if (marker) marker.remove();
+  });
+
+  const grouped = {};
+  validationIssues.forEach((issue) => {
+    grouped[issue.nodeId] ||= [];
+    grouped[issue.nodeId].push(issue);
+  });
+
+  Object.entries(grouped).forEach(([nodeId, issues]) => {
+    const el = nodeDomMap[nodeId];
+    if (!el) return;
+    const marker = document.createElement('div');
+    marker.className = 'bt-node-validation ' + (issues.some((issue) => issue.type === 'error') ? 'error' : 'warning');
+    el.appendChild(marker);
+    el.classList.add('has-validation');
+  });
+}
+
+function openValidationPanel() {
+  validateTree();
+  renderValidationPanelList();
+  $validationPanel.classList.add('open');
+}
+
+function closeValidationPanel() {
+  $validationPanel.classList.remove('open');
+}
+
+function openHelpOverlay() {
+  $helpOverlay.classList.add('open');
+}
+
+function closeHelpOverlay() {
+  $helpOverlay.classList.remove('open');
+}
+
+function disconnectAllForNode(nodeId) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return false;
+  const parentId = findParentNodeId(nodeId);
+  const childIds = [...node.children];
+  if (!parentId && !childIds.length) return false;
+  pushUndoSnapshot();
+  if (parentId) removeConnection(parentId, nodeId, { skipHistory: true });
+  for (const childId of childIds) {
+    removeConnection(nodeId, childId, { skipHistory: true });
+  }
+  if (state.selectedNodeId === nodeId) renderRightPanelSelection(nodeId);
+  return true;
+}
+
+function applyNodePropertiesFromClipboard(nodeId) {
+  const node = treeData.nodes[nodeId];
+  if (!node || !nodeClipboard || nodeClipboard.length !== 1 || nodeClipboard[0].type !== node.type) return false;
+  const source = nodeClipboard[0];
+  pushUndoSnapshot();
+  node.properties = JSON.parse(JSON.stringify(source.properties));
+  if (treeData.root !== nodeId) node.enabled = source.enabled !== false;
+  updateNodeEnabledState(nodeId);
+  updateNodeSummary(nodeId);
+  if (state.selectedNodeId === nodeId) renderRightPanelSelection(nodeId);
+  scheduleValidationRefresh();
+  return true;
+}
+
+function copySelectionToClipboard() {
+  const ids = (state.selectedNodeIds?.length ? state.selectedNodeIds : (state.selectedNodeId ? [state.selectedNodeId] : []));
+  const data = serializeNodesForClipboard(ids);
+  if (!data) return false;
+  nodeClipboard = data;
+  return true;
+}
+
+function pasteNodeFromClipboard(clientX, clientY) {
+  if (!nodeClipboard?.length) return false;
+  const point = getPasteAnchorPoint(clientX, clientY);
+  const createdIds = [];
+  const baseX = Math.round(point.x - 80);
+  const baseY = Math.round(point.y - 20);
+  const sourceMinX = Math.min(...nodeClipboard.map((node) => node.display.x));
+  const sourceMinY = Math.min(...nodeClipboard.map((node) => node.display.y));
+
+  pushUndoSnapshot();
+  nodeClipboard.forEach((source, index) => {
+    const x = baseX + (source.display.x - sourceMinX);
+    const y = baseY + (source.display.y - sourceMinY);
+    const node = addNodeToCanvas(source.type, x, y, { skipHistory: true });
+    if (!node) return;
+    node.enabled = source.enabled !== false;
+    node.properties = JSON.parse(JSON.stringify(source.properties));
+    node.display.collapsed = source.display?.collapsed ?? true;
+    updateNodeEnabledState(node.id);
+    updateNodeSummary(node.id);
+    const el = nodeDomMap[node.id];
+    if (el && node.display.collapsed === false) el.classList.add('expanded');
+    if (el) {
+      const toggle = el.querySelector('.bt-node-toggle');
+      if (toggle) toggle.textContent = node.display.collapsed ? '▶' : '▼';
+    }
+    createdIds.push(node.id);
+  });
+  setSelectedNodes(createdIds);
+  return createdIds.length > 0;
+}
+
+function createContextMenuItem(def) {
+  if (def.separator) {
+    const sep = document.createElement('div');
+    sep.className = 'context-menu-separator';
+    return sep;
+  }
+  const item = document.createElement('div');
+  item.className = 'context-menu-item' + (def.disabled ? ' disabled' : '');
+  const label = document.createElement('span');
+  label.textContent = def.label;
+  item.appendChild(label);
+  if (def.submenu?.length) {
+    const arrow = document.createElement('span');
+    arrow.className = 'context-menu-arrow';
+    arrow.textContent = '▶';
+    item.appendChild(arrow);
+    const submenu = document.createElement('div');
+    submenu.className = 'context-submenu';
+    def.submenu.forEach((sub) => submenu.appendChild(createContextMenuItem(sub)));
+    item.appendChild(submenu);
+  } else if (!def.disabled && def.onClick) {
+    item.addEventListener('click', () => {
+      closeContextMenu();
+      def.onClick();
+    });
+  }
+  return item;
+}
+
+function openContextMenu(clientX, clientY, items) {
+  $contextMenu.innerHTML = '';
+  items.forEach((item) => $contextMenu.appendChild(createContextMenuItem(item)));
+  $contextMenu.classList.add('open');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  requestAnimationFrame(() => {
+    const rect = $contextMenu.getBoundingClientRect();
+    $contextMenu.style.left = `${Math.min(clientX, vw - rect.width - 8)}px`;
+    $contextMenu.style.top = `${Math.min(clientY, vh - rect.height - 8)}px`;
+  });
+}
+
+function closeContextMenu() {
+  $contextMenu.classList.remove('open');
+  $contextMenu.innerHTML = '';
+}
+
+$contextMenu.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+function getAddNodeSubmenu(clientX, clientY) {
+  return Object.entries(CATEGORIES).map(([categoryKey, categoryDef]) => ({
+    label: categoryDef.label,
+    submenu: Object.values(NODE_TYPES)
+      .filter((nodeType) => nodeType.category === categoryKey)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .map((nodeType) => ({
+        label: nodeType.displayName,
+        onClick: () => {
+          const point = getCanvasPoint(clientX, clientY);
+          addNodeToCanvas(nodeType.type, Math.round(point.x - 80), Math.round(point.y - 20));
+        },
+      })),
+  }));
+}
+
+function renderNodePalette() {
+  const query = $nodeSearch.value.trim().toLowerCase();
+  $nodePaletteList.innerHTML = '';
+
+  for (const [categoryKey, categoryDef] of Object.entries(CATEGORIES)) {
+    const types = Object.values(NODE_TYPES)
+      .filter((nodeType) => nodeType.category === categoryKey)
+      .filter((nodeType) => {
+        if (!query) return true;
+        return nodeType.displayName.toLowerCase().includes(query) || nodeType.type.toLowerCase().includes(query) || nodeType.description.toLowerCase().includes(query);
+      })
+      .sort((a, b) => a.type.localeCompare(b.type));
+
+    if (!types.length) continue;
+
+    const group = document.createElement('div');
+    group.className = 'palette-group';
+    const title = document.createElement('div');
+    title.className = 'palette-group-title';
+    title.textContent = categoryDef.label;
+    group.appendChild(title);
+
+    for (const nodeType of types) {
+      const item = document.createElement('div');
+      item.className = 'palette-item';
+      item.title = nodeType.description || nodeType.type;
+
+      const strip = document.createElement('div');
+      strip.className = 'palette-item-strip';
+      strip.style.background = categoryDef.color;
+      item.appendChild(strip);
+
+      const name = document.createElement('div');
+      name.className = 'palette-item-name';
+      name.textContent = nodeType.displayName;
+      item.appendChild(name);
+
+      item.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        paletteDrag = {
+          type: nodeType.type,
+          startX: e.clientX,
+          startY: e.clientY,
+          active: false,
+          previewEl: null,
+        };
+      });
+
+      item.addEventListener('click', (e) => {
+        if (suppressNextPaletteClick) {
+          suppressNextPaletteClick = false;
+          return;
+        }
+        addNodeAtViewportCenter(nodeType.type);
+      });
+
+      group.appendChild(item);
+    }
+
+    $nodePaletteList.appendChild(group);
+  }
+}
+
+function getConnectionsForPort(nodeId, portType) {
+  if (portType === 'out') {
+    const node = treeData.nodes[nodeId];
+    if (!node) return [];
+    return node.children.map((childId) => ({ sourceId: nodeId, targetId: childId }));
+  }
+  if (portType === 'in') {
+    const parentId = findParentNodeId(nodeId);
+    return parentId ? [{ sourceId: parentId, targetId: nodeId }] : [];
+  }
+  return [];
+}
+
+function isConnectionInList(connection, list) {
+  return list.some((item) => isSameConnection(connection, item));
+}
+
+function removeConnectionsForPort(nodeId, portType, options = {}) {
+  const connections = getConnectionsForPort(nodeId, portType);
+  let removedAny = false;
+  if (connections.length && !options.skipHistory) pushUndoSnapshot();
+  for (const connection of connections) {
+    removedAny = removeConnection(connection.sourceId, connection.targetId, { skipHistory: true }) || removedAny;
+  }
+  return removedAny;
+}
+
+function drawBezier(ctx, from, to, options = {}) {
+  const { cp1x, cp1y, cp2x, cp2y } = getBezierControlPoints(from, to);
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
+  ctx.lineWidth = options.lineWidth || 2;
+  ctx.strokeStyle = options.color || '#3a3a55';
+  ctx.shadowColor = options.shadowColor || 'transparent';
+  ctx.shadowBlur = options.shadowBlur || 0;
+  if (options.dashed) ctx.setLineDash([8, 6]);
+  else ctx.setLineDash([]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+}
+
+function drawConnections() {
+  const ctx = $connCanvas.getContext('2d');
+  const rect = $canvasArea.getBoundingClientRect();
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  ctx.clearRect(0, 0, w, h);
+
+  const hovered = state.hoveredConnection;
+  const hoveredPortConnections = state.hoveredPort
+    ? getConnectionsForPort(state.hoveredPort.nodeId, state.hoveredPort.portType)
+    : [];
+  for (const record of getConnectionRecords()) {
+    const isHovered = isSameConnection(record, hovered);
+    const isPortHovered = isConnectionInList(record, hoveredPortConnections);
+    const isSibling = hovered && hovered.sourceId === record.sourceId && !isHovered;
+    const color = isHovered
+      ? record.color
+      : (isPortHovered ? `${record.color}b3` : (isSibling ? `${record.color}80` : '#3a3a55'));
+    const lineWidth = isHovered ? 7 : (isPortHovered ? 6 : 5);
+
+    drawBezier(ctx, record.from, record.to, {
+      color,
+      lineWidth,
+      shadowColor: isHovered ? `${record.color}cc` : (isPortHovered ? `${record.color}55` : 'transparent'),
+      shadowBlur: isHovered ? 12 : (isPortHovered ? 6 : 0),
+    });
+    if (record.siblingCount > 1) drawConnectionLabel(ctx, record.from, record.to, record.index);
+    if (isHovered) drawConnectionFlow(ctx, record.from, record.to, `${record.color}80`);
+  }
+
+  if (state.connectionDrag) {
+    const drag = state.connectionDrag;
+    if (drag.mode === 'from-output') {
+      const from = getNodePortPosition(drag.sourceNodeId, 'out');
+      if (from) {
+        drawBezier(ctx, from, drag.currentPoint, {
+          color: drag.color,
+          lineWidth: 3,
+          dashed: true,
+        });
+      }
+    } else if (drag.mode === 'from-input') {
+      const to = getNodePortPosition(drag.targetNodeId, 'in');
+      if (to) {
+        drawBezier(ctx, drag.currentPoint, to, {
+          color: drag.color,
+          lineWidth: 3,
+          dashed: true,
+        });
+      }
+    }
+  }
+}
+
+function clearValidConnectionTargets() {
+  document.querySelectorAll('.bt-port.connection-valid').forEach((el) => {
+    el.classList.remove('connection-valid');
+  });
+  document.querySelectorAll('.bt-node.connection-valid-node').forEach((el) => {
+    el.classList.remove('connection-valid-node');
+  });
+  state.hoveredConnectionNodeId = null;
+}
+
+function findParentNodeId(nodeId) {
+  for (const node of Object.values(treeData.nodes)) {
+    if (node.children.includes(nodeId)) return node.id;
+  }
+  return null;
+}
+
+function isDescendantNode(rootId, targetId) {
+  const root = treeData.nodes[rootId];
+  if (!root) return false;
+  const stack = [...root.children];
+  while (stack.length) {
+    const id = stack.pop();
+    if (id === targetId) return true;
+    const node = treeData.nodes[id];
+    if (node) stack.push(...node.children);
+  }
+  return false;
+}
+
+function canConnectNodes(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) return false;
+  const source = treeData.nodes[sourceId];
+  const target = treeData.nodes[targetId];
+  if (!source || !target) return false;
+  if (!NODE_TYPES[source.type]?.hasOutput) return false;
+  if (treeData.root === targetId) return false;
+  if (isDescendantNode(targetId, sourceId)) return false;
+  return true;
+}
+
+function updateValidConnectionTargets(sourceId) {
+  clearValidConnectionTargets();
+  for (const [nodeId, el] of Object.entries(nodeDomMap)) {
+    if (!canConnectNodes(sourceId, nodeId)) continue;
+    const portIn = el.querySelector('.bt-port-in');
+    if (portIn) portIn.classList.add('connection-valid');
+  }
+}
+
+function updateValidConnectionSources(targetId) {
+  clearValidConnectionTargets();
+  for (const [nodeId, el] of Object.entries(nodeDomMap)) {
+    if (!canConnectNodes(nodeId, targetId)) continue;
+    const portOut = el.querySelector('.bt-port-out');
+    if (portOut) portOut.classList.add('connection-valid');
+  }
+}
+
+function updateHoveredConnectionNode(clientX, clientY) {
+  document.querySelectorAll('.bt-node.connection-valid-node').forEach((el) => {
+    el.classList.remove('connection-valid-node');
+  });
+  state.hoveredConnectionNodeId = null;
+  if (!state.connectionDrag) return;
+
+  const nodeEl = document.elementFromPoint(clientX, clientY)?.closest('.bt-node');
+  const nodeId = nodeEl?.dataset.nodeId || null;
+  if (!nodeId) return;
+
+  const valid = state.connectionDrag.mode === 'from-output'
+    ? canConnectNodes(state.connectionDrag.sourceNodeId, nodeId)
+    : canConnectNodes(nodeId, state.connectionDrag.targetNodeId);
+  if (!valid) return;
+
+  nodeEl.classList.add('connection-valid-node');
+  state.hoveredConnectionNodeId = nodeId;
+}
+
+function connectNodes(sourceId, targetId, options = {}) {
+  if (!canConnectNodes(sourceId, targetId)) return false;
+  const source = treeData.nodes[sourceId];
+  const sourceReg = NODE_TYPES[source.type];
+  const maxChildren = sourceReg?.maxChildren ?? null;
+
+  if (!source.children.includes(targetId)) {
+    if (!options.skipHistory) pushUndoSnapshot();
+    const oldParentId = findParentNodeId(targetId);
+    if (oldParentId && oldParentId !== sourceId) {
+      const oldParent = treeData.nodes[oldParentId];
+      if (oldParent) {
+        oldParent.children = oldParent.children.filter((id) => id !== targetId);
+      }
+    }
+
+    if (typeof maxChildren === 'number' && maxChildren > 0 && source.children.length >= maxChildren) {
+      source.children = source.children.slice(0, maxChildren - 1);
+    }
+
+    source.children.push(targetId);
+  }
+  drawConnections();
+  if (state.selectedNodeId === sourceId || state.selectedNodeId === targetId) {
+    renderRightPanelSelection(state.selectedNodeId);
+  }
+  scheduleValidationRefresh();
+  return true;
+}
+
+function renderNode(nodeData) {
+  const reg = NODE_TYPES[nodeData.type];
+  if (!reg) return null;
+  const catColor = CATEGORIES[reg.category]?.color || '#888';
+
+  // 容器
+  const el = document.createElement('div');
+  el.className = 'bt-node';
+  if (nodeData.display.collapsed === false && reg.expandable) {
+    el.classList.add('expanded');
+  }
+  if (treeData.root === nodeData.id) {
+    el.classList.add('is-root');
+  }
+  if (!isNodeEnabled(nodeData)) {
+    el.classList.add('disabled');
+  }
+  el.style.setProperty('--node-cat-color', catColor);
+  el.style.left = nodeData.display.x + 'px';
+  el.style.top = nodeData.display.y + 'px';
+  el.dataset.nodeId = nodeData.id;
+
+  // 输入端口
+  const portIn = document.createElement('div');
+  portIn.className = 'bt-port bt-port-in';
+  portIn.dataset.portType = 'in';
+  portIn.dataset.nodeId = nodeData.id;
+  el.appendChild(portIn);
+
+  // 标题栏
+  const titleBar = document.createElement('div');
+  titleBar.className = 'bt-node-title';
+
+  const rootMark = document.createElement('span');
+  rootMark.className = 'bt-node-root-mark';
+  rootMark.textContent = '★';
+  titleBar.appendChild(rootMark);
+
+  const icon = document.createElement('span');
+  icon.className = 'bt-node-icon';
+  icon.title = isNodeEnabled(nodeData) ? I18N.enabledOn : I18N.enabledOff;
+  titleBar.appendChild(icon);
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'bt-node-name';
+  nameSpan.textContent = reg.displayName;
+  titleBar.appendChild(nameSpan);
+
+  const toggle = document.createElement('span');
+  toggle.className = 'bt-node-toggle' + (reg.expandable ? '' : ' hidden');
+  toggle.textContent = (nodeData.display.collapsed !== false) ? '▶' : '▼';
+  titleBar.appendChild(toggle);
+
+  el.appendChild(titleBar);
+
+  // 摘要区
+  const summary = document.createElement('div');
+  summary.className = 'bt-node-summary';
+  summary.textContent = reg.summary(nodeData);
+  el.appendChild(summary);
+
+  // 属性编辑区
+  if (reg.expandable && reg.props.length > 0) {
+    const propsDiv = document.createElement('div');
+    propsDiv.className = 'bt-node-props';
+
+    for (const propDef of reg.props) {
+      const row = createPropertyControlRow(nodeData, propDef, 'node');
+      propsDiv.appendChild(row);
+    }
+    el.appendChild(propsDiv);
+  }
+
+  // 输出端口（仅 composite/decorator）
+  if (reg.hasOutput) {
+    const portOut = document.createElement('div');
+    portOut.className = 'bt-port bt-port-out';
+    portOut.dataset.portType = 'out';
+    portOut.dataset.nodeId = nodeData.id;
+    el.appendChild(portOut);
+  }
+
+  // 注册到 DOM
+  $nodeContainer.appendChild(el);
+  nodeDomMap[nodeData.id] = el;
+
+  bindNodeEvents(nodeData.id, el, titleBar, icon, toggle);
+
+  return el;
+}
+
+function createPropertyControlRow(nodeData, propDef, scope) {
+  const row = document.createElement('div');
+  row.className = scope === 'panel' ? 'inspector-prop-row' : 'bt-node-prop-row';
+
+  const label = document.createElement('span');
+  label.className = scope === 'panel' ? 'inspector-prop-label' : 'bt-node-prop-label';
+  label.textContent = propDef.label + ':';
+  row.appendChild(label);
+
+  let control;
+  if (propDef.type === 'select') {
+    control = document.createElement('div');
+    control.className = 'bt-node-prop-select';
+    control.dataset.controlType = 'custom-select';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'bt-node-prop-select-btn';
+    button.textContent = nodeData.properties[propDef.key] ?? '';
+    control.appendChild(button);
+
+    const menu = document.createElement('div');
+    menu.className = 'bt-node-prop-select-menu';
+
+    for (const opt of (propDef.options || [])) {
+      const optionBtn = document.createElement('button');
+      optionBtn.type = 'button';
+      optionBtn.className = 'bt-node-prop-select-option';
+      optionBtn.textContent = opt;
+      optionBtn.dataset.optionValue = opt;
+      if (nodeData.properties[propDef.key] == opt) optionBtn.classList.add('active');
+      optionBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (nodeData.properties[propDef.key] != opt) pushUndoSnapshot();
+        nodeData.properties[propDef.key] = opt;
+        updateCustomSelectControl(control, opt);
+        updateNodeSummary(nodeData.id);
+        syncPropertyControls(nodeData.id, propDef.key, scope);
+        control.classList.remove('open');
+      });
+      menu.appendChild(optionBtn);
+    }
+
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const willOpen = !control.classList.contains('open');
+      closeAllCustomSelects(control);
+      control.classList.toggle('open', willOpen);
+    });
+
+    control.appendChild(menu);
+  } else if (propDef.type === 'checkbox') {
+    control = document.createElement('input');
+    control.type = 'checkbox';
+    control.className = 'bt-node-prop-checkbox';
+    control.checked = !!nodeData.properties[propDef.key];
+    control.addEventListener('change', () => {
+      pushUndoSnapshot();
+      nodeData.properties[propDef.key] = control.checked;
+      updateNodeSummary(nodeData.id);
+      syncPropertyControls(nodeData.id, propDef.key, scope);
+    });
+  } else {
+    control = document.createElement('input');
+    control.className = 'bt-node-prop-input';
+    control.type = propDef.type === 'number' ? 'number' : 'text';
+    control.value = nodeData.properties[propDef.key] ?? '';
+    control.addEventListener('focus', () => beginPropertyHistory(control));
+    control.addEventListener('input', () => {
+      const v = propDef.type === 'number' ? Number(control.value) : control.value;
+      nodeData.properties[propDef.key] = v;
+      updateNodeSummary(nodeData.id);
+      syncPropertyControls(nodeData.id, propDef.key, scope);
+    });
+    control.addEventListener('blur', () => endPropertyHistory(control));
+  }
+
+  control.dataset.propKey = propDef.key;
+  control.dataset.scope = scope;
+
+  row.appendChild(control);
+  return row;
+}
+
+function syncPropertyControls(nodeId, propKey, sourceScope) {
+  const node = treeData.nodes[nodeId];
+  if (!node) return;
+  const value = node.properties[propKey];
+
+  const nodeEl = nodeDomMap[nodeId];
+  if (nodeEl && sourceScope !== 'node') {
+    const control = nodeEl.querySelector(`[data-prop-key="${propKey}"]`);
+    if (control) {
+      if (control.dataset.controlType === 'custom-select') updateCustomSelectControl(control, value);
+      else if (control.type === 'checkbox') control.checked = !!value;
+      else control.value = value ?? '';
+    }
+  }
+
+  if (state.selectedNodeId === nodeId && sourceScope !== 'panel') {
+    const panelControl = $rightPanelBody.querySelector(`[data-prop-key="${propKey}"]`);
+    if (panelControl) {
+      if (panelControl.dataset.controlType === 'custom-select') updateCustomSelectControl(panelControl, value);
+      else if (panelControl.type === 'checkbox') panelControl.checked = !!value;
+      else panelControl.value = value ?? '';
+    }
+  }
+}
+
+function updateCustomSelectControl(control, value) {
+  if (!control) return;
+  const button = control.querySelector('.bt-node-prop-select-btn');
+  if (button) button.textContent = value ?? '';
+  control.querySelectorAll('.bt-node-prop-select-option').forEach((option) => {
+    option.classList.toggle('active', option.dataset.optionValue == value);
+  });
+}
+
+function updateNodeEnabledState(id) {
+  const node = treeData.nodes[id];
+  const el = nodeDomMap[id];
+  if (!node || !el) return;
+  const enabled = isNodeEnabled(node);
+  el.classList.toggle('disabled', !enabled);
+  const icon = el.querySelector('.bt-node-icon');
+  if (icon) icon.title = enabled ? I18N.enabledOn : I18N.enabledOff;
+}
+
+function updateNodeSummary(id) {
+  const node = treeData.nodes[id];
+  const el = nodeDomMap[id];
+  if (!node || !el) return;
+  const reg = NODE_TYPES[node.type];
+  if (!reg) return;
+  const summaryEl = el.querySelector('.bt-node-summary');
+  if (summaryEl) summaryEl.textContent = reg.summary(node);
+  scheduleValidationRefresh();
+}
+
+function updateNodePosition(id) {
+  const node = treeData.nodes[id];
+  const el = nodeDomMap[id];
+  if (!node || !el) return;
+  el.style.left = node.display.x + 'px';
+  el.style.top = node.display.y + 'px';
+  drawConnections();
+}
+
+function removeNodeDom(id) {
+  const el = nodeDomMap[id];
+  if (el) {
+    el.remove();
+    delete nodeDomMap[id];
+  }
+}
+
+function toggleNodeExpand(id) {
+  const node = treeData.nodes[id];
+  const el = nodeDomMap[id];
+  const reg = NODE_TYPES[node?.type];
+  if (!node || !el || !reg?.expandable) return;
+
+  const wasCollapsed = node.display.collapsed !== false;
+  node.display.collapsed = wasCollapsed ? false : true;
+
+  if (node.display.collapsed) {
+    el.classList.remove('expanded');
+  } else {
+    el.classList.add('expanded');
+  }
+
+  // 更新三角
+  const toggle = el.querySelector('.bt-node-toggle');
+  if (toggle) toggle.textContent = node.display.collapsed ? '▶' : '▼';
+  validateTree();
+}
+
+function setNodeSelected(id, selected) {
+  const el = nodeDomMap[id];
+  if (!el) return;
+  if (selected) el.classList.add('selected');
+  else el.classList.remove('selected');
+}
+
+function setNodeMultiSelected(id, selected) {
+  const el = nodeDomMap[id];
+  if (!el) return;
+  el.classList.toggle('multi-selected', selected);
+}
+
+function renderMultiSelectionPanel(ids) {
+  $rightPanelBody.innerHTML = '';
+  renderInspectorTreeSection($rightPanelBody);
+  const nodes = ids.map((id) => treeData.nodes[id]).filter(Boolean);
+  if (!nodes.length) {
+    renderRightPanelPlaceholder();
+    return;
+  }
+  const sameType = nodes.every((node) => node.type === nodes[0].type);
+  const box = document.createElement('div');
+  box.className = 'inspector-card';
+  const title = document.createElement('div');
+  title.className = 'inspector-type';
+  title.textContent = sameType ? `${nodes.length} 个节点（${getNodeDisplayName(nodes[0].type)}）` : `已选择 ${nodes.length} 个节点（多种类型）`;
+  box.appendChild(title);
+
+  const enabledValues = nodes.filter((node) => treeData.root !== node.id).map((node) => isNodeEnabled(node));
+  const mixedEnabled = enabledValues.length > 1 && enabledValues.some((v) => v !== enabledValues[0]);
+  const enabledLabel = enabledValues.length === 0 ? I18N.rootLocked : (mixedEnabled ? I18N.multipleValues : (enabledValues[0] ? I18N.enabledOn : I18N.enabledOff));
+  const enabledRow = document.createElement('div');
+  enabledRow.className = 'inspector-row';
+  enabledRow.innerHTML = `
+    <div class="inspector-label">${I18N.enabled}</div>
+    <div class="inspector-status">
+      <button type="button" class="inspector-toggle${!mixedEnabled && enabledValues[0] ? ' on' : ''}" ${enabledValues.length === 0 ? 'disabled' : ''}></button>
+      <div class="inspector-status-text">${enabledLabel}</div>
+    </div>
+  `;
+  const toggleBtn = enabledRow.querySelector('.inspector-toggle');
+  if (toggleBtn && enabledValues.length) {
+    toggleBtn.addEventListener('click', () => {
+      const nextValue = mixedEnabled ? true : !enabledValues[0];
+      setNodesEnabled(ids, nextValue);
+    });
+  }
+  box.appendChild(enabledRow);
+
+  if (sameType) {
+    const reg = NODE_TYPES[nodes[0].type];
+    box.appendChild(Object.assign(document.createElement('div'), { className: 'inspector-divider' }));
+    const propsLabel = document.createElement('div');
+    propsLabel.className = 'inspector-label';
+    propsLabel.textContent = I18N.properties;
+    box.appendChild(propsLabel);
+    const propsHost = document.createElement('div');
+    propsHost.className = 'inspector-props';
+    (reg?.props || []).forEach((propDef) => {
+      const values = nodes.map((node) => node.properties[propDef.key]);
+      const allSame = values.every((value) => value === values[0]);
+      const row = document.createElement('div');
+      row.className = 'inspector-prop-row';
+      const label = document.createElement('span');
+      label.className = 'inspector-prop-label';
+      label.textContent = `${propDef.label}:`;
+      row.appendChild(label);
+
+      let control;
+      if (propDef.type === 'select') {
+        control = createInspectorSelectControl(allSame ? values[0] : I18N.multipleValues, propDef.options || [], (value) => {
+          applyPropertyToNodes(ids, propDef.key, value);
+        });
+        if (!allSame) updateCustomSelectControl(control, I18N.multipleValues);
+      } else if (propDef.type === 'checkbox') {
+        control = document.createElement('input');
+        control.type = 'checkbox';
+        control.className = 'bt-node-prop-checkbox';
+        control.checked = allSame ? !!values[0] : false;
+        control.indeterminate = !allSame;
+        control.addEventListener('change', () => {
+          control.indeterminate = false;
+          applyPropertyToNodes(ids, propDef.key, control.checked);
+        });
+      } else {
+        control = document.createElement('input');
+        control.className = 'bt-node-prop-input';
+        control.type = propDef.type === 'number' ? 'number' : 'text';
+        control.value = allSame ? (values[0] ?? '') : '';
+        if (!allSame) control.placeholder = I18N.multipleValues;
+        control.addEventListener('focus', () => beginPropertyHistory(control));
+        control.addEventListener('blur', () => {
+          endPropertyHistory(control);
+          if (control.value === '' && !allSame && propDef.type === 'number') return;
+          const nextValue = propDef.type === 'number' ? Number(control.value) : control.value;
+          if (control.value !== '') applyPropertyToNodes(ids, propDef.key, nextValue);
+        });
+      }
+      row.appendChild(control);
+      propsHost.appendChild(row);
+    });
+    if (!(reg?.props || []).length) {
+      const empty = document.createElement('div');
+      empty.className = 'inspector-empty';
+      empty.textContent = I18N.noEditableProps;
+      propsHost.appendChild(empty);
+    }
+    box.appendChild(propsHost);
+  } else {
+    const note = document.createElement('div');
+    note.className = 'inspector-note';
+    note.textContent = '当前可批量移动、启用/关闭和删除。';
+    box.appendChild(note);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'inspector-btn-row';
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'inspector-btn danger';
+  deleteBtn.textContent = I18N.delete_;
+  deleteBtn.addEventListener('click', () => deleteSelectedNodes());
+  actions.appendChild(deleteBtn);
+  box.appendChild(actions);
+  $rightPanelBody.appendChild(box);
+}
+
+function setSelectedNodes(ids) {
+  const uniqueIds = [...new Set(ids.filter((id) => treeData.nodes[id]))];
+  const prevIds = state.selectedNodeIds || [];
+  prevIds.forEach((id) => {
+    setNodeSelected(id, false);
+    setNodeMultiSelected(id, false);
+  });
+  state.selectedNodeIds = uniqueIds;
+  state.selectedNodeId = uniqueIds.length === 1 ? uniqueIds[0] : (uniqueIds[0] || null);
+  uniqueIds.forEach((id) => {
+    if (uniqueIds.length === 1) setNodeSelected(id, true);
+    else setNodeMultiSelected(id, true);
+  });
+  if (uniqueIds.length === 0) renderRightPanelPlaceholder();
+  else if (uniqueIds.length === 1) renderRightPanelSelection(uniqueIds[0]);
+  else renderMultiSelectionPanel(uniqueIds);
+}
+
+function toggleNodeInSelection(id) {
+  const current = new Set(state.selectedNodeIds || []);
+  if (current.has(id)) current.delete(id);
+  else current.add(id);
+  setSelectedNodes([...current]);
+}
+
+function renderRightPanelPlaceholder() {
+  $rightPanelBody.innerHTML = '';
+  renderInspectorTreeSection($rightPanelBody);
+  const placeholder = document.createElement('p');
+  placeholder.className = 'placeholder-text';
+  placeholder.textContent = I18N.clickToEdit;
+  $rightPanelBody.appendChild(placeholder);
+}
+
+function renderRightPanelSelection(id) {
+  const node = treeData.nodes[id];
+  if (!node) {
+    renderRightPanelPlaceholder();
+    return;
+  }
+  const reg = NODE_TYPES[node.type];
+  const category = CATEGORIES[node.category];
+  const categoryLabel = category?.label || node.category;
+  const categoryColor = category?.color || '#888';
+  const enabledLabel = isNodeEnabled(node) ? I18N.enabledOn : I18N.enabledOff;
+  const rootLocked = treeData.root === id;
+  const hasOutput = !!reg?.hasOutput;
+  const showChildrenPanel = hasOutput && reg?.maxChildren !== 1;
+
+  $rightPanelBody.innerHTML = '';
+  renderInspectorTreeSection($rightPanelBody);
+  $rightPanelBody.insertAdjacentHTML('beforeend', `
+    <div class="inspector-card">
+      <div class="inspector-meta">
+        <div class="inspector-type">${getNodeDisplayName(node.type)}</div>
+        <div class="inspector-category"><span class="inspector-category-dot" style="background:${categoryColor}"></span>${categoryLabel}</div>
+        <div class="inspector-id">${node.id}</div>
+      </div>
+      <div class="inspector-row">
+        <div class="inspector-label">${I18N.enabled}</div>
+        <div class="inspector-status">
+          <button type="button" class="inspector-toggle${isNodeEnabled(node) ? ' on' : ''}" ${rootLocked ? 'disabled' : ''}></button>
+          <div class="inspector-status-text">${enabledLabel}</div>
+        </div>
+      </div>
+      <div class="inspector-divider"></div>
+      <div class="inspector-label">${I18N.nodeActions}</div>
+      <div class="inspector-node-actions"></div>
+      ${showChildrenPanel ? `<div class="inspector-divider"></div><div class="inspector-label">${I18N.childNodes}</div><div class="inspector-children"></div>` : ''}
+      <div class="inspector-divider"></div>
+      <div class="inspector-label">${I18N.properties}</div>
+      <div class="inspector-props"></div>
+    </div>
+  `);
+
+  const toggleBtn = $rightPanelBody.querySelector('.inspector-toggle');
+  const actionsHost = $rightPanelBody.querySelector('.inspector-node-actions');
+  const childrenHost = $rightPanelBody.querySelector('.inspector-children');
+  const propsHost = $rightPanelBody.querySelector('.inspector-props');
+  if (toggleBtn && !rootLocked) {
+    toggleBtn.addEventListener('click', () => {
+      setNodeEnabled(id, !isNodeEnabled(node));
+    });
+  }
+
+  if (actionsHost) {
+    const actionRow = document.createElement('div');
+    actionRow.className = 'inspector-btn-row';
+
+    const rootBtn = document.createElement('button');
+    rootBtn.type = 'button';
+    rootBtn.className = 'inspector-btn';
+    rootBtn.textContent = rootLocked ? I18N.rootNode : I18N.setAsRoot;
+    rootBtn.disabled = rootLocked;
+    rootBtn.addEventListener('click', () => setNodeRoot(id));
+    actionRow.appendChild(rootBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'inspector-btn danger';
+    deleteBtn.textContent = I18N.delete_;
+    deleteBtn.addEventListener('click', () => deleteNode(id));
+    actionRow.appendChild(deleteBtn);
+
+    actionsHost.appendChild(actionRow);
+  }
+
+  if (childrenHost) {
+    if (hasOutput && node.children.length) {
+      const dropLine = document.createElement('div');
+      dropLine.className = 'inspector-drop-line';
+      childrenHost.appendChild(dropLine);
+
+      node.children.forEach((childId, index) => {
+        const child = treeData.nodes[childId];
+        if (!child) return;
+        const childCat = CATEGORIES[child.category];
+        const item = document.createElement('div');
+        item.className = 'inspector-child-item';
+        item.dataset.childIndex = String(index);
+        item.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          if (e.target.closest('.inspector-icon-btn')) return;
+          e.preventDefault();
+          beginChildReorderDrag(id, index, item, childrenHost, e.clientY);
+        });
+
+        const strip = document.createElement('div');
+        strip.className = 'inspector-child-strip';
+        strip.style.background = childCat?.color || '#888';
+        item.appendChild(strip);
+
+        const main = document.createElement('div');
+        main.className = 'inspector-child-main';
+        const name = document.createElement('div');
+        name.className = 'inspector-child-name';
+        name.textContent = getNodeDisplayName(child.type);
+        const meta = document.createElement('div');
+        meta.className = 'inspector-child-meta';
+        meta.textContent = child.id;
+        main.appendChild(name);
+        main.appendChild(meta);
+        item.appendChild(main);
+
+        const actions = document.createElement('div');
+        actions.className = 'inspector-child-actions';
+
+        const upBtn = document.createElement('button');
+        upBtn.type = 'button';
+        upBtn.className = 'inspector-icon-btn';
+        upBtn.textContent = '↑';
+        upBtn.disabled = index === 0;
+        upBtn.addEventListener('click', () => moveChildNode(id, index, index - 1));
+        actions.appendChild(upBtn);
+
+        const downBtn = document.createElement('button');
+        downBtn.type = 'button';
+        downBtn.className = 'inspector-icon-btn';
+        downBtn.textContent = '↓';
+        downBtn.disabled = index === node.children.length - 1;
+        downBtn.addEventListener('click', () => moveChildNode(id, index, index + 1));
+        actions.appendChild(downBtn);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'inspector-icon-btn';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', () => removeConnection(id, childId));
+        actions.appendChild(removeBtn);
+
+        item.appendChild(actions);
+        childrenHost.appendChild(item);
+      });
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'inspector-empty';
+      empty.textContent = I18N.noChildren;
+      childrenHost.appendChild(empty);
+    }
+  }
+
+  if (propsHost) {
+    if (reg?.props?.length) {
+      for (const propDef of reg.props) {
+        propsHost.appendChild(createPropertyControlRow(node, propDef, 'panel'));
+      }
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'inspector-empty';
+      empty.textContent = I18N.noEditableProps;
+      propsHost.appendChild(empty);
+    }
+  }
+}
+
+function selectNode(id) {
+  if (state.selectedNodeIds?.length === 1 && state.selectedNodeId === id) {
+    renderRightPanelSelection(id);
+    return;
+  }
+  setSelectedNodes(id ? [id] : []);
+}
+
+function toggleNodeEnabled(id) {
+  const node = treeData.nodes[id];
+  if (!node || treeData.root === id) return;
+  setNodeEnabled(id, !isNodeEnabled(node));
+}
+
+function setNodeRoot(id, options = {}) {
+  const node = treeData.nodes[id];
+  if (!node) return;
+  if (!options.skipHistory && treeData.root !== id) pushUndoSnapshot();
+  // 移除旧 root 标记
+  if (treeData.root && nodeDomMap[treeData.root]) {
+    nodeDomMap[treeData.root].classList.remove('is-root');
+  }
+  node.enabled = true;
+  treeData.root = id;
+  if (id && nodeDomMap[id]) {
+    nodeDomMap[id].classList.add('is-root');
+  }
+  updateNodeEnabledState(id);
+  if (state.selectedNodeId === id) renderRightPanelSelection(id);
+  scheduleValidationRefresh();
+}
+
+let nodeDragState = null;
+const NODE_DRAG_THRESHOLD = 6;
+const NODE_TITLE_DOUBLE_CLICK_MS = 280;
+
+function getNodeRectInCanvas(nodeId) {
+  const el = nodeDomMap[nodeId];
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  const canvasRect = $canvasArea.getBoundingClientRect();
+  return {
+    left: rect.left - canvasRect.left,
+    top: rect.top - canvasRect.top,
+    right: rect.right - canvasRect.left,
+    bottom: rect.bottom - canvasRect.top,
+  };
+}
+
+function rectsIntersect(a, b) {
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+}
+
+function updateSelectionRect(rect) {
+  $selectionRect.style.display = 'block';
+  $selectionRect.style.left = `${rect.left}px`;
+  $selectionRect.style.top = `${rect.top}px`;
+  $selectionRect.style.width = `${rect.width}px`;
+  $selectionRect.style.height = `${rect.height}px`;
+}
+
+function hideSelectionRect() {
+  $selectionRect.style.display = 'none';
+}
+
+function bindNodeEvents(id, el, titleBar, icon, toggle) {
+  let lastTitleClickAt = 0;
+  let lastTitleClickX = 0;
+  let lastTitleClickY = 0;
+  let suppressNodeClick = false;
+  const portIn = el.querySelector('.bt-port-in');
+  const portOut = el.querySelector('.bt-port-out');
+
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('.bt-port')) return;
+    if (suppressNodeClick) {
+      suppressNodeClick = false;
+      return;
+    }
+    if (e.shiftKey) toggleNodeInSelection(id);
+    else selectNode(id);
+  });
+
+  icon.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  icon.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleNodeEnabled(id);
+  });
+
+  toggle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleNodeExpand(id);
+  });
+
+  titleBar.addEventListener('mouseup', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.bt-node-icon, .bt-node-toggle')) return;
+    if (nodeDragState && nodeDragState.id === id && nodeDragState.active) return;
+
+    const now = performance.now();
+    const dx = Math.abs(e.clientX - lastTitleClickX);
+    const dy = Math.abs(e.clientY - lastTitleClickY);
+    const isDoubleClick =
+      now - lastTitleClickAt <= NODE_TITLE_DOUBLE_CLICK_MS &&
+      dx <= NODE_DRAG_THRESHOLD &&
+      dy <= NODE_DRAG_THRESHOLD;
+
+    if (isDoubleClick) {
+      e.preventDefault();
+      e.stopPropagation();
+      nodeDragState = null;
+      $canvasArea.style.cursor = '';
+      lastTitleClickAt = 0;
+      toggleNodeExpand(id);
+      return;
+    }
+
+    lastTitleClickAt = now;
+    lastTitleClickX = e.clientX;
+    lastTitleClickY = e.clientY;
+  });
+
+  if (portIn) {
+    portIn.addEventListener('mouseenter', () => {
+      state.hoveredPort = { nodeId: id, portType: 'in' };
+      state.hoveredConnection = null;
+      drawConnections();
+    });
+    portIn.addEventListener('mouseleave', () => {
+      if (!state.hoveredPort || state.hoveredPort.nodeId !== id || state.hoveredPort.portType !== 'in') return;
+      state.hoveredPort = null;
+      drawConnections();
+    });
+    portIn.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        const start = getPortScreenPosition(portIn);
+        state.connectionDrag = {
+          mode: 'from-input',
+          targetNodeId: id,
+          currentPoint: start,
+          color: getConnectionStrokeColor(treeData.nodes[id]),
+        };
+        updateValidConnectionSources(id);
+        drawConnections();
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
+
+  if (portOut) {
+    portOut.addEventListener('mouseenter', () => {
+      state.hoveredPort = { nodeId: id, portType: 'out' };
+      state.hoveredConnection = null;
+      drawConnections();
+    });
+    portOut.addEventListener('mouseleave', () => {
+      if (!state.hoveredPort || state.hoveredPort.nodeId !== id || state.hoveredPort.portType !== 'out') return;
+      state.hoveredPort = null;
+      drawConnections();
+    });
+    portOut.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const start = getPortScreenPosition(portOut);
+      state.connectionDrag = {
+        mode: 'from-output',
+        sourceNodeId: id,
+        currentPoint: start,
+        color: getConnectionStrokeColor(treeData.nodes[id]),
+      };
+      updateValidConnectionTargets(id);
+      drawConnections();
+    });
+  }
+
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.bt-port, .bt-node-toggle, .bt-node-icon, input, select, textarea, button, label')) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    const selectedIds = state.selectedNodeIds || [];
+    if (e.shiftKey && !selectedIds.includes(id)) {
+      return;
+    }
+    if (!selectedIds.includes(id)) selectNode(id);
+
+    const dragIds = selectedIds.includes(id) ? [...selectedIds] : [id];
+    const node = treeData.nodes[id];
+    const point = getCanvasPoint(e.clientX, e.clientY);
+    nodeDragState = {
+      id,
+      ids: dragIds,
+      suppressClick: () => { suppressNodeClick = true; },
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      offsetX: point.x - node.display.x,
+      offsetY: point.y - node.display.y,
+      active: false,
+      beforeSnapshot: createSnapshot(),
+      startPositions: Object.fromEntries(dragIds.map((nodeId) => [nodeId, { x: treeData.nodes[nodeId].display.x, y: treeData.nodes[nodeId].display.y }])),
+    };
+  });
+}
+
+window.addEventListener('mousemove', (e) => {
+  lastMouseClientX = e.clientX;
+  lastMouseClientY = e.clientY;
+
+  if (paletteDrag) {
+    if (!paletteDrag.active) {
+      const dx = e.clientX - paletteDrag.startX;
+      const dy = e.clientY - paletteDrag.startY;
+      if (Math.abs(dx) >= 4 || Math.abs(dy) >= 4) {
+        paletteDrag.active = true;
+        suppressNextPaletteClick = true;
+        paletteDrag.previewEl = createPaletteDragPreview(paletteDrag.type);
+      }
+    }
+    if (paletteDrag.active) updatePaletteDragPreview(e.clientX, e.clientY);
+  }
+
+  if (childReorderDrag) {
+    updateChildReorderDrag(e.clientY);
+  }
+
+  if (state.connectionDrag) {
+    state.connectionDrag.currentPoint = getCanvasLocalPoint(e.clientX, e.clientY);
+    updateHoveredConnectionNode(e.clientX, e.clientY);
+    drawConnections();
+  }
+
+  if (state.marquee) {
+    const current = getCanvasLocalPoint(e.clientX, e.clientY);
+    const left = Math.min(state.marquee.startX, current.x);
+    const top = Math.min(state.marquee.startY, current.y);
+    const width = Math.abs(current.x - state.marquee.startX);
+    const height = Math.abs(current.y - state.marquee.startY);
+    updateSelectionRect({ left, top, width, height });
+    const selectRect = { left, top, right: left + width, bottom: top + height };
+    const hitIds = Object.keys(treeData.nodes).filter((nodeId) => {
+      const rect = getNodeRectInCanvas(nodeId);
+      return rect && rectsIntersect(selectRect, rect);
+    });
+    const nextIds = state.marquee.additive
+      ? [...new Set([...state.marquee.baseIds, ...hitIds])]
+      : hitIds;
+    setSelectedNodes(nextIds);
+  }
+
+  if (!nodeDragState) return;
+  const node = treeData.nodes[nodeDragState.id];
+  if (!node) return;
+  if (!nodeDragState.active) {
+    const dx = e.clientX - nodeDragState.startClientX;
+    const dy = e.clientY - nodeDragState.startClientY;
+    if (Math.abs(dx) < NODE_DRAG_THRESHOLD && Math.abs(dy) < NODE_DRAG_THRESHOLD) return;
+    nodeDragState.active = true;
+    $canvasArea.style.cursor = 'grabbing';
+  }
+  const point = getCanvasPoint(e.clientX, e.clientY);
+  const dx = Math.round(point.x - nodeDragState.offsetX - nodeDragState.startPositions[nodeDragState.id].x);
+  const dy = Math.round(point.y - nodeDragState.offsetY - nodeDragState.startPositions[nodeDragState.id].y);
+  nodeDragState.ids.forEach((nodeId) => {
+    const start = nodeDragState.startPositions[nodeId];
+    treeData.nodes[nodeId].display.x = start.x + dx;
+    treeData.nodes[nodeId].display.y = start.y + dy;
+    updateNodePosition(nodeId);
+  });
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0 && state.marquee) {
+    state.marquee = null;
+    hideSelectionRect();
+  }
+
+  if (e.button === 0 && paletteDrag) {
+    finishPaletteDrag(e.clientX, e.clientY);
+  }
+
+  if (e.button === 0 && childReorderDrag) {
+    finishChildReorderDrag();
+  }
+
+  if (e.button === 0 && state.connectionDrag) {
+    if (state.connectionDrag.mode === 'from-output') {
+      const portIn = e.target.closest('.bt-port-in');
+      const nodeEl = e.target.closest('.bt-node');
+      const targetNodeId = portIn?.dataset.nodeId || nodeEl?.dataset.nodeId || null;
+      connectNodes(state.connectionDrag.sourceNodeId, targetNodeId);
+    } else if (state.connectionDrag.mode === 'from-input') {
+      const portOut = e.target.closest('.bt-port-out');
+      const nodeEl = e.target.closest('.bt-node');
+      const sourceNodeId = portOut?.dataset.nodeId || nodeEl?.dataset.nodeId || null;
+      connectNodes(sourceNodeId, state.connectionDrag.targetNodeId);
+    }
+    state.connectionDrag = null;
+    clearValidConnectionTargets();
+    state.hoveredConnection = null;
+    drawConnections();
+  }
+
+  if (e.button !== 0 || !nodeDragState) return;
+  if (nodeDragState.active) {
+    applyGridSnapToNodes(nodeDragState.ids, e.shiftKey);
+    pushUndoSnapshot(nodeDragState.beforeSnapshot);
+    nodeDragState.suppressClick?.();
+  }
+  nodeDragState = null;
+  $canvasArea.style.cursor = '';
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('#context-menu')) closeContextMenu();
+  if (e.button === 2 && paletteDrag) {
+    suppressNextContextMenu = true;
+    cancelPaletteDrag();
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (e.target.closest('.bt-node-prop-select')) return;
+  closeAllCustomSelects(null);
+});
+
+window.addEventListener('mousedown', (e) => {
+  if (!e.target.closest('#context-menu')) closeContextMenu();
+}, true);
+
+$canvasArea.addEventListener('mousemove', (e) => {
+  if (state.connectionDrag || state.hoveredPort) return;
+  const hovered = hitTestConnections(getCanvasLocalPoint(e.clientX, e.clientY));
+  const changed = !isSameConnection(hovered, state.hoveredConnection);
+  if (!changed) return;
+  state.hoveredConnection = hovered;
+  $canvasArea.style.cursor = hovered ? 'pointer' : '';
+  drawConnections();
+});
+
+$canvasArea.addEventListener('mouseleave', () => {
+  if ((!state.hoveredConnection && !state.hoveredPort) || state.connectionDrag) return;
+  state.hoveredConnection = null;
+  state.hoveredPort = null;
+  $canvasArea.style.cursor = '';
+  drawConnections();
+});
+
+$canvasArea.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (state.connectionDrag) {
+    state.connectionDrag = null;
+    clearValidConnectionTargets();
+    state.hoveredConnection = null;
+    state.hoveredPort = null;
+    drawConnections();
+  }
+  if (e.target.closest('.bt-node')) return;
+  const rect = getCanvasLocalPoint(e.clientX, e.clientY);
+  state.marquee = {
+    startX: rect.x,
+    startY: rect.y,
+    additive: e.shiftKey,
+    baseIds: e.shiftKey ? [...(state.selectedNodeIds || [])] : [],
+  };
+  if (!e.shiftKey) selectNode(null);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeContextMenu();
+    closeHelpOverlay();
+    if (paletteDrag) {
+      cancelPaletteDrag();
+    }
+    if (state.connectionDrag) {
+      state.connectionDrag = null;
+      clearValidConnectionTargets();
+      drawConnections();
+    }
+    if (state.marquee) {
+      state.marquee = null;
+      hideSelectionRect();
+    }
+    if (state.selectedNodeIds?.length) {
+      setSelectedNodes([]);
+    }
+  }
+  const isFitView = !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'f';
+  const isSetRoot = !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'r';
+  const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z';
+  const isRedo = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z';
+  const isCopy = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'c';
+  const isPaste = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'v';
+  const isCut = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'x';
+  if (isUndo) {
+    e.preventDefault();
+    undo();
+    return;
+  }
+  if (isRedo) {
+    e.preventDefault();
+    redo();
+    return;
+  }
+  const activeTag = document.activeElement?.tagName;
+  if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+  if (isFitView) {
+    e.preventDefault();
+    fitViewToNodes();
+    return;
+  }
+  if (isSetRoot) {
+    if (state.selectedNodeIds?.length === 1 && state.selectedNodeId) {
+      e.preventDefault();
+      setNodeRoot(state.selectedNodeId);
+    }
+    return;
+  }
+  if (isCopy) {
+    if (copySelectionToClipboard()) e.preventDefault();
+    return;
+  }
+  if (isPaste) {
+    if (pasteNodeFromClipboard()) e.preventDefault();
+    return;
+  }
+  if (isCut) {
+    if (copySelectionToClipboard()) {
+      const removed = (state.selectedNodeIds || []).length > 1 ? deleteSelectedNodes() : (state.selectedNodeId ? deleteNode(state.selectedNodeId) : false);
+      if (removed) e.preventDefault();
+    }
+    return;
+  }
+
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (state.connectionDrag) return;
+
+  let removed = false;
+  if (state.hoveredPort) {
+    removed = removeConnectionsForPort(state.hoveredPort.nodeId, state.hoveredPort.portType);
+  } else if (state.hoveredConnection) {
+    removed = removeConnection(state.hoveredConnection.sourceId, state.hoveredConnection.targetId);
+  } else if ((state.selectedNodeIds || []).length > 1) {
+    removed = deleteSelectedNodes();
+  } else if (state.selectedNodeId) {
+    removed = deleteNode(state.selectedNodeId);
+  }
+
+  if (removed) {
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('beforeunload', (e) => {
+  writeAutosaveNow();
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+/* ============================================================
+   向画布添加节点（便捷函数）
+   ============================================================ */
+function addNodeToCanvas(type, x, y, options = {}) {
+  if (!options.skipHistory) pushUndoSnapshot();
+  const nodeData = createNodeData(type, x, y);
+  if (!nodeData) return null;
+  renderNode(nodeData);
+  // 第一个节点自动设为 root
+  if (Object.keys(treeData.nodes).length === 1) {
+    setNodeRoot(nodeData.id, { skipHistory: true });
+  }
+  scheduleValidationRefresh();
+  return nodeData;
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+onResize();
+renderNodePalette();
+renderRightPanelPlaceholder();
+updateHistoryButtons();
+
+// 添加几个测试节点，验证渲染
+addNodeToCanvas('Sequence', 100, 50, { skipHistory: true });
+addNodeToCanvas('InjectInput', 40, 180, { skipHistory: true });
+addNodeToCanvas('WaitFrames', 200, 180, { skipHistory: true });
+addNodeToCanvas('CheckHP', 360, 50, { skipHistory: true });
+addNodeToCanvas('Repeat', 360, 180, { skipHistory: true });
+
+try {
+  const saved = localStorage.getItem(AUTOSAVE_KEY);
+  if (saved) {
+    recoveredAutosave = JSON.parse(saved);
+    showRecoveryBanner(true);
+  }
+} catch {}
+
+validateTree();
+
+</script>
+</body>
+</html>

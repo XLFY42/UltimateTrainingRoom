@@ -51,3 +51,45 @@
 | **CheckFacing** | target, facing | get_IsLeft() |
 | **CheckBurnout** | target | focus_wait > 0 |
 | **CheckFrameCount** | op, value | 树全局帧计数器 |
+
+---
+
+## Web 编辑器相关（待各节点设计时补充）
+
+### 折叠摘要文案
+
+每个节点在编辑器画布上折叠时需显示摘要信息。设计各节点时需定义其摘要格式。
+
+临时参考（最终以各节点设计为准）：
+
+| 节点类型 | 折叠摘要示例 |
+|---------|-------------|
+| Sequence / Selector / Parallel | `N children` |
+| RandomSelector | `N children (random)` |
+| Repeat | `×N` 或 `forever` |
+| WaitFrames | `30f` |
+| InjectInput | `P2: FWD+LP 60f` |
+| Noop | (无摘要，仅标题) |
+| 其他节点 | **待定义** |
+
+### 节点验证标记
+
+验证结果是节点自身视觉状态的一部分，显示在节点右上角：
+
+- 警告：黄色三角
+- 错误：红色三角
+
+该标记由编辑器验证系统驱动，但在节点设计层面需要预留其视觉位置与状态含义。
+
+### 节点右键菜单
+
+在编辑器画布上右键点击节点时弹出的上下文菜单。通用菜单项如下，各节点可在设计时追加特有选项：
+
+**通用项**：
+- Set as Root
+- Duplicate
+- Expand / Collapse（仅可展开节点显示）
+- Delete
+- Disconnect All
+
+**节点特有项**：待各节点设计时定义（例如：Composite 节点可能有 "Sort Children"、"Reverse Order" 等）
