@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行为树编辑器 v3</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ===== 左面板：Node Palette ===== -->
+  <div id="left-panel">
+    <div class="panel-collapse-btn-collapsed" id="left-expand-btn" title="展开面板">»</div>
+    <div class="panel-header">
+      <span id="left-panel-title">节点面板</span>
+      <button class="panel-collapse-btn" id="left-collapse-btn" title="折叠面板">«</button>
+    </div>
+    <div class="panel-body" id="left-panel-body">
+      <input type="text" class="search-box" id="node-search" placeholder="搜索节点类型...">
+      <div id="node-palette-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== 左分隔条 ===== -->
+  <div class="divider" id="left-divider"></div>
+
+  <!-- ===== 中央画布区 ===== -->
+  <div id="canvas-area">
+    <canvas id="grid-canvas"></canvas>
+    <canvas id="connection-canvas"></canvas>
+    <div id="node-container"></div>
+    <div id="selection-rect"></div>
+
+    <!-- 工具栏 -->
+    <div id="toolbar">
+      <button class="toolbar-btn" id="btn-new">新建</button>
+      <button class="toolbar-btn" id="btn-load">加载</button>
+      <button class="toolbar-btn" id="btn-save">保存</button>
+      <button class="toolbar-btn disabled" id="btn-undo">撤销</button>
+      <button class="toolbar-btn disabled" id="btn-redo">重做</button>
+      <button class="toolbar-btn" id="btn-layout">布局</button>
+      <button class="toolbar-btn" id="btn-snap">吸附</button>
+      <button class="toolbar-btn" id="btn-validate">验证</button>
+      <button class="toolbar-btn" id="btn-help">帮助</button>
+    </div>
+  </div>
+
+  <!-- ===== 右分隔条 ===== -->
+  <div class="divider" id="right-divider"></div>
+
+  <!-- ===== 右面板：Properties Editor ===== -->
+  <div id="right-panel">
+    <div class="panel-collapse-btn-collapsed" id="right-expand-btn" title="展开面板">«</div>
+    <div class="panel-header">
+      <button class="panel-collapse-btn" id="right-collapse-btn" title="折叠面板">»</button>
+      <span id="right-panel-title">属性编辑器</span>
+    </div>
+    <div class="panel-body" id="right-panel-body">
+      <p class="placeholder-text" id="right-panel-placeholder">点击节点以编辑</p>
+    </div>
+  </div>
+</div>
+
+<div id="context-menu" class="context-menu"></div>
+<div id="validation-panel" class="validation-panel">
+    <div class="validation-panel-header">
+    <span id="validation-title">验证问题</span>
+    <button class="panel-collapse-btn" id="btn-close-validation" title="关闭">×</button>
+  </div>
+  <div id="validation-panel-list" class="validation-panel-list"></div>
+</div>
+<div id="help-overlay" class="help-overlay">
+  <div class="help-dialog">
+    <div class="help-dialog-header">
+      <span id="help-title">快捷键帮助</span>
+      <button class="panel-collapse-btn" id="btn-close-help" title="关闭">×</button>
+    </div>
+    <div class="help-dialog-body">
+      <div class="help-key">F</div><div class="help-desc" id="help-desc-fit">适应视图</div>
+      <div class="help-key">R</div><div class="help-desc" id="help-desc-root">设为 Root</div>
+      <div class="help-key">Escape</div><div class="help-desc" id="help-desc-escape">取消当前操作 / 取消选中</div>
+      <div class="help-key">Delete</div><div class="help-desc" id="help-desc-delete">删除选中节点或连线</div>
+      <div class="help-key">Ctrl+Z</div><div class="help-desc" id="help-desc-undo">撤销</div>
+      <div class="help-key">Ctrl+Shift+Z</div><div class="help-desc" id="help-desc-redo">重做</div>
+      <div class="help-key">Ctrl+C / V / X</div><div class="help-desc" id="help-desc-copy">复制 / 粘贴 / 剪切</div>
+      <div class="help-key">Shift+拖拽</div><div class="help-desc" id="help-desc-shift-drag">临时禁用吸附</div>
+    </div>
+  </div>
+</div>
+<div id="recovery-banner" class="recovery-banner">
+  <div class="recovery-banner-text" id="recovery-banner-text">检测到未保存的树</div>
+  <button class="toolbar-btn" id="btn-recover-tree">恢复</button>
+  <button class="toolbar-btn" id="btn-discard-recovery">放弃</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
