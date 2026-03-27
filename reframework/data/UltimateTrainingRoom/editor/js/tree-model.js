@@ -20,7 +20,7 @@ export const treeData = {
   description: '',
   root: null,
   nodes: {},
-  onComplete: 'restart',
+  onComplete: 'loop',
 };
 
 export let nodeClipboard = null;

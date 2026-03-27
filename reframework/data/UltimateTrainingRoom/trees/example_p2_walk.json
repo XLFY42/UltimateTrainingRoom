@@ -25,7 +25,7 @@
       "category": "action",
       "properties": {
         "target": "P2",
-        "inputs": ["FORWARD"],
+        "inputs": ["6"],
         "frames": 60,
         "relative": true
       }

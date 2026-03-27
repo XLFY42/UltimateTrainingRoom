@@ -2,10 +2,12 @@
 -- bt_input.lua - 双 Hook 模块
 -- Hook 1: UpdateFrameMain pre → BT tick 驱动（每战斗帧 1 次）
 -- Hook 2: pl_input_sub post → 输入注入（每玩家每帧 1 次）
+-- Hook 3: UIWidget_TMFrameMeter SetUp/SetDown post → 帧数条实时感知更新
 -- ============================================================
 
 local runtime = require("UltimateTrainingRoom.bt_runtime")
 local gamestate = require("UltimateTrainingRoom.bt_gamestate")
+local logger = require("UltimateTrainingRoom.bt_logger")
 
 local M = {}
 
@@ -69,13 +71,13 @@ function M.init_tick_hook()
 
     local bf_type = sdk.find_type_definition("app.BattleFlow")
     if not bf_type then
-        print("[BT Input] ERROR: app.BattleFlow not found")
+        logger.push("BT Input", "ERROR: app.BattleFlow not found")
         return false
     end
 
     local method = bf_type:get_method("UpdateFrameMain")
     if not method then
-        print("[BT Input] ERROR: UpdateFrameMain not found")
+        logger.push("BT Input", "ERROR: UpdateFrameMain not found")
         return false
     end
 
@@ -102,8 +104,16 @@ function M.init_tick_hook()
         end
     )
 
+    -- 初始化 Frame Meter 实时感知 hooks
+    local fmOk = gamestate.initFrameMeterHooks()
+    if fmOk then
+        logger.push("BT Input", "Frame meter hooks initialized")
+    else
+        logger.push("BT Input", "WARN: Frame meter hooks not found")
+    end
+
     tick_hook_initialized = true
-    print("[BT Input] Tick hook on UpdateFrameMain initialized")
+    logger.push("BT Input", "Tick hook on UpdateFrameMain initialized")
     return true
 end
 
@@ -169,7 +179,7 @@ function M.init_input_hooks()
     )
 
     input_hook_initialized = true
-    print("[BT Input] Input injection hook on pl_input_sub initialized")
+    logger.push("BT Input", "Input injection hook on pl_input_sub initialized")
     return true
 end
 
@@ -181,7 +191,7 @@ function M.init_deferred_executor()
             for _, action in ipairs(actions) do
                 local ok, err = pcall(action)
                 if not ok then
-                    print("[BT] Deferred action error: " .. tostring(err))
+                    logger.push("BT", "Deferred action error: " .. tostring(err))
                 end
             end
             runtime.clear_deferred_actions()

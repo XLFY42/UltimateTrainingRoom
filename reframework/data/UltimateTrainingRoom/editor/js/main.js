@@ -46,6 +46,7 @@ import {
   initInputManager, startNodeDrag, startConnectionDragFromOutput, startConnectionDragFromInput,
   getPasteAnchorPoint,
 } from './input-manager.js';
+import { serializeTreeForExport, deserializeTreeFromImport } from './serialization.js';
 
 /* ============================================================
    DOM 引用
@@ -70,6 +71,9 @@ const domRefs = {
   $recoveryBanner:   $('recovery-banner'),
   $btnRecoverTree:   $('btn-recover-tree'),
   $btnDiscardRecovery: $('btn-discard-recovery'),
+  $btnNew:           $('btn-new'),
+  $btnLoad:          $('btn-load'),
+  $btnSave:          $('btn-save'),
   $btnLayout:        $('btn-layout'),
   $btnValidate:      $('btn-validate'),
   $validationPanel:  $('validation-panel'),
@@ -149,6 +153,8 @@ initPalette(bus, domRefs);
 initContextMenu(domRefs);
 initToolbar(bus, domRefs);
 initInputManager(bus, domRefs);
+
+initTreeIo();
 
 /* ============================================================
    恢复的 autosave 数据
@@ -437,9 +443,75 @@ bus.on('action:focus-node', ({ nodeId }) => {
   drawConnections();
 });
 
-/* ============================================================
-   高层操作函数（编排多模块调用）
-   ============================================================ */
+function initTreeIo() {
+  domRefs.$btnNew?.addEventListener('click', () => {
+    if (Object.keys(treeData.nodes).length && !confirm(I18N.confirmNewTreeDiscard)) return;
+    newTree();
+  });
+
+  domRefs.$btnSave?.addEventListener('click', () => {
+    const json = serializeTreeForExport(treeData);
+    const text = JSON.stringify(json, null, 2);
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = document.createElement('a');
+    const name = (treeData.name || 'tree').replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  domRefs.$btnLoad?.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target?.result || '{}');
+          const payload = deserializeTreeFromImport(parsed);
+          if (!payload) throw new Error(I18N.loadNoValidTree);
+          applyFullSnapshot({
+            treeData: payload.treeData,
+            nextNodeId: payload.nextNodeId,
+            viewport: {
+              panX: 0,
+              panY: 0,
+              zoom: 1,
+              selectedNodeIds: [],
+            },
+          });
+        } catch (err) {
+          alert(`${I18N.loadFailed}${err?.message || String(err)}`);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  });
+}
+
+function newTree() {
+  applyFullSnapshot({
+    treeData: {
+      name: I18N.treeDefaultName,
+      description: '',
+      root: null,
+      nodes: {},
+      onComplete: 'loop',
+    },
+    nextNodeId: 1,
+    viewport: {
+      panX: 0,
+      panY: 0,
+      zoom: 1,
+      selectedNodeIds: [],
+    },
+  });
+}
 
 function makeSnapshot() {
   return createSnapshot({
@@ -757,7 +829,7 @@ function handleContextMenu(clientX, clientY, target) {
         { label: getNodeDisplayName('Sequence'), onClick: () => { const p = getCanvasPoint(clientX, clientY); addNodeToCanvas('Sequence', Math.round(p.x - 80), Math.round(p.y - 20)); } },
         { label: getNodeDisplayName('Repeat'), onClick: () => { const p = getCanvasPoint(clientX, clientY); addNodeToCanvas('Repeat', Math.round(p.x - 80), Math.round(p.y - 20)); } },
         { label: getNodeDisplayName('InjectInput'), onClick: () => { const p = getCanvasPoint(clientX, clientY); addNodeToCanvas('InjectInput', Math.round(p.x - 80), Math.round(p.y - 20)); } },
-        { label: getNodeDisplayName('CheckHP'), onClick: () => { const p = getCanvasPoint(clientX, clientY); addNodeToCanvas('CheckHP', Math.round(p.x - 80), Math.round(p.y - 20)); } },
+        { label: getNodeDisplayName('CheckValue'), onClick: () => { const p = getCanvasPoint(clientX, clientY); addNodeToCanvas('CheckValue', Math.round(p.x - 80), Math.round(p.y - 20)); } },
         { separator: true },
         { label: I18N.addNode, submenu: getAddNodeSubmenu(clientX, clientY) },
         { label: I18N.paste, disabled: !clipboard, onClick: () => pasteNodeFromClipboard(clientX, clientY) },
@@ -869,7 +941,7 @@ updateHistoryButtons(false, false);
 addNodeToCanvas('Sequence', 100, 50, { skipHistory: true });
 addNodeToCanvas('InjectInput', 40, 180, { skipHistory: true });
 addNodeToCanvas('WaitFrames', 200, 180, { skipHistory: true });
-addNodeToCanvas('CheckHP', 360, 50, { skipHistory: true });
+addNodeToCanvas('CheckValue', 360, 50, { skipHistory: true });
 addNodeToCanvas('Repeat', 360, 180, { skipHistory: true });
 
 // Autosave 恢复

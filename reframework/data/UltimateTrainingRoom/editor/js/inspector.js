@@ -117,7 +117,7 @@ function createTreeEditorSection() {
   const completeSelect = createInspectorSelectControl(
     treeData.onComplete,
     [
-      { value: 'restart', label: I18N.onCompleteRestart },
+      { value: 'loop', label: I18N.onCompleteLoop },
       { value: 'stop', label: I18N.onCompleteStop },
     ],
     (value) => bus.emit('action:update-tree-field', { key: 'onComplete', value }),

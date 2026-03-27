@@ -258,6 +258,9 @@ export function createPropertyControlRow(nodeData, propDef, scope) {
     control.className = 'bt-node-prop-input';
     control.type = propDef.type === 'number' ? 'number' : 'text';
     control.value = nodeData.properties[propDef.key] ?? '';
+    if (propDef.placeholder && propDef.type !== 'number') {
+      control.placeholder = propDef.placeholder;
+    }
     control.addEventListener('input', () => {
       beginPropertyHistory(control);
       const v = propDef.type === 'number' ? Number(control.value) : control.value;

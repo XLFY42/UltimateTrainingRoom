@@ -8,7 +8,7 @@ local runtime = require("UltimateTrainingRoom.bt_runtime")
 local nodes = require("UltimateTrainingRoom.bt_nodes")
 local bt_input = require("UltimateTrainingRoom.bt_input")
 local schema = require("UltimateTrainingRoom.bt_schema")
--- bt_gamestate 由 bt_input 内部 require 和调用
+local logger = require("UltimateTrainingRoom.bt_logger")
 
 -- ========== 初始化 ==========
 -- 注册所有节点类型
@@ -54,7 +54,7 @@ local test_tree = {
             category = "action",
             properties = {
                 target = "P2",
-                inputs = { "FORWARD" },
+                inputs = { "6" },
                 frames = 60,
                 relative = true,
             },
@@ -183,6 +183,23 @@ re.on_draw_ui(function()
                 end
             end
 
+            if imgui.tree_node("Logs") then
+                if imgui.button("Clear Logs") then
+                    logger.clear()
+                end
+
+                local lines = logger.get_lines()
+                local start_idx = 1
+                if #lines > 40 then
+                    start_idx = #lines - 39
+                end
+                for i = start_idx, #lines do
+                    imgui.text(lines[i])
+                end
+
+                imgui.tree_pop()
+            end
+
             -- 调试信息（始终显示）
             if imgui.tree_node("Debug") then
                 local info = bt_input.get_debug_info()
@@ -202,4 +219,4 @@ re.on_draw_ui(function()
     end
 end)
 
-print("[UTR] Ultimate Training Room v0.3.0 loaded (Phase 2)")
+logger.push("UTR", "Ultimate Training Room v0.3.0 loaded (Phase 2)")
