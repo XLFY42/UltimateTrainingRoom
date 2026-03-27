@@ -18,8 +18,8 @@ local p1_addr = 0
 local p2_addr = 0
 local refs_valid = false
 
--- hook 内 pre→post 传递
-local current_hook_player = -1
+-- hook 内 pre→post 传递（使用栈以支持嵌套调用）
+local p_id_stack = {}
 
 -- 每帧只刷新一次 refs 的控制
 local refs_refreshed_this_frame = false
@@ -85,6 +85,9 @@ function M.init_tick_hook()
         method,
         -- pre_function: tick BT before player processing
         function(args)
+            -- 安全机制：清空堆栈以防止跨帧泄漏
+            p_id_stack = {}
+
             -- 标记新帧开始，refs 需要在 pl_input_sub 中刷新
             refs_refreshed_this_frame = false
 
@@ -131,10 +134,8 @@ function M.init_input_hooks()
 
     sdk.hook(
         method,
-        -- pre_function: 识别玩家
+        -- pre_function: 识别玩家并入栈（支持嵌套调用）
         function(args)
-            current_hook_player = -1
-
             -- 每帧第一次 pl_input_sub 调用时刷新玩家引用
             -- （在 pl_input_sub 内刷新比在 UpdateFrameMain 更可靠）
             if not refs_refreshed_this_frame then
@@ -142,18 +143,24 @@ function M.init_input_hooks()
                 refs_refreshed_this_frame = true
             end
 
-            if not refs_valid then return end
-
-            local hook_addr = sdk.to_int64(args[2])
-            if hook_addr == p1_addr then
-                current_hook_player = 0
-            elseif hook_addr == p2_addr then
-                current_hook_player = 1
+            local p_id = -1
+            if refs_valid then
+                local hook_addr = sdk.to_int64(args[2])
+                if hook_addr == p1_addr then
+                    p_id = 0
+                elseif hook_addr == p2_addr then
+                    p_id = 1
+                end
             end
+
+            -- 压栈，确保 post 阶段与本次 pre 一一对应
+            table.insert(p_id_stack, p_id)
         end,
         -- post_function: 仅应用注入掩码
         function(retval)
-            if current_hook_player == 0 then
+            local p_id = table.remove(p_id_stack) or -1
+
+            if p_id == 0 then
                 local p1_mask = runtime.get_p1_mask()
                 if p1_mask > 0 and p1_ref then
                     local original = p1_ref:get_field("pl_input_new")
@@ -162,7 +169,7 @@ function M.init_input_hooks()
                         debug_inject_p1 = debug_inject_p1 + 1
                     end
                 end
-            elseif current_hook_player == 1 then
+            elseif p_id == 1 then
                 local p2_mask = runtime.get_p2_mask()
                 if p2_mask > 0 and p2_ref then
                     local original = p2_ref:get_field("pl_input_new")
@@ -173,7 +180,6 @@ function M.init_input_hooks()
                 end
             end
 
-            current_hook_player = -1
             return retval
         end
     )
